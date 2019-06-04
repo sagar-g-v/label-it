@@ -1,2 +1,2 @@
 # mylabelingapp
-This application is created for generating data sets for training autonomous vehicles and stuff like that
+This application is created for generating data-sets(ground truth) for training autonomous vehicles and stuff like that
