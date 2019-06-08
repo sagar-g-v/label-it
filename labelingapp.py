@@ -31,9 +31,9 @@ QT5 = QT_VERSION[0] == '5'
 # - [opt] Store paths instead of creating new ones at each paint.
 
 DEFAULT_LINE_COLOR = QColor(0, 255, 0, 128)
-DEFAULT_FILL_COLOR = QColor(255, 0, 0, 128)
+DEFAULT_FILL_COLOR = QColor(255, 0, 0, 50)
 DEFAULT_SELECT_LINE_COLOR = QColor(255, 255, 255)
-DEFAULT_SELECT_FILL_COLOR = QColor(0, 128, 255, 155)
+DEFAULT_SELECT_FILL_COLOR = QColor(0, 128, 255, 60)
 DEFAULT_VERTEX_FILL_COLOR = QColor(0, 255, 0, 255)
 DEFAULT_HVERTEX_FILL_COLOR = QColor(255, 0, 0)
 
@@ -138,7 +138,7 @@ class Shape(object):
                     rectangle = self.getRectFromLine(*self.points)
                     line_path.addRect(rectangle)
                 for i in range(len(self.points)):
-                    self.drawVertex(vrtx_path, i)
+                    self.drawVertexR(vrtx_path, i)
             elif self.shape_type == "circle":
                 assert len(self.points) in [1, 2]
                 if len(self.points) == 2:
@@ -190,6 +190,37 @@ class Shape(object):
         else:
             assert False, "unsupported vertex shape"
 
+    def drawVertexR(self, path, i):
+        d = self.point_size / self.scale
+        shape = self.point_type
+        point = self.points[i]
+
+        if i == self._highlightIndex:
+            size, shape = self._highlightSettings[self._highlightMode]
+            d *= size
+        if self._highlightIndex is not None:
+            self.vertex_fill_color = self.hvertex_fill_color
+        else:
+            self.vertex_fill_color = Shape.vertex_fill_color
+        
+        sign = -1
+        if i == 0:
+            sign = 1
+        elif i == 2:
+            sign = -1
+        
+        edgepath = QPainterPath()
+        edgepath.moveTo(QPoint(point.x() + sign*d / 2,point.y()))
+        edgepath.lineTo(point)
+        edgepath.lineTo(QPoint(point.x(),point.y() + sign*d / 2))
+        
+        if shape == self.P_SQUARE:
+            path.addPath(edgepath)         
+        elif shape == self.P_ROUND:
+            path.addPath(edgepath)
+        else:
+            assert False, "unsupported vertex shape"
+            
     def nearestVertex(self, point, epsilon):
         min_distance = float('inf')
         min_i = None
@@ -1058,7 +1089,7 @@ class MainWindow(QMainWindow):
             'Create Line',
             lambda: self.toggleDrawMode(False, createMode='line'),
             'Ctrl+L',
-            'rectangle',
+            'line',
             'Start drawing lines',
             enabled=False,
         )
@@ -1082,8 +1113,8 @@ class MainWindow(QMainWindow):
                           None, 'edit', 'Add point to the nearest edge',
                           enabled=False)
         
-        editMode = action('Edit Rectangle', self.setEditMode,'Ctrl+E', 'edit',
-                  'Move and Edit Rectangle',enabled=False,)
+        editMode = action('Edit', self.setEditMode,'Ctrl+E', 'edit',
+                  'Move and Edit',enabled=False,)
 
         shapeLineColor = action(
             'Shape &Line Color', self.chshapeLineColor, icon='color-line',
@@ -1109,11 +1140,11 @@ class MainWindow(QMainWindow):
         Close  = action('Close File', self.closeFile, 'Ctrl+Shift+W', 'close',
                       'Close File')
         
-        delete = action("Delete Rectangle", self.deleteSelectedShape,'Delete', 'delete', 
-                        "Delete selected Rectangle",)
+        delete = action("Delete", self.deleteSelectedShape,'Delete', 'delete', 
+                        "Delete selected Shape",)
         
-        undo = action("Undo Deletion", self.undoDeletetion,'Ctrl+Z', 'undo', 
-                        "Undo Deletion",)
+        undo = action("Undo", self.undoDeletetion,'Ctrl+Z', 'undo', 
+                        "Undo",)
         menu=(
             createPolygonMode,
             createRectangleMode,
@@ -1215,7 +1246,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.reply = QMessageBox.question(self, 'Confirm Exit',
-            "Are you sure to Quit Application ?", QMessageBox.Yes | 
+            "Are you sure to Quit ?", QMessageBox.Yes | 
             QMessageBox.No, QMessageBox.No)
 
         if self.reply == QMessageBox.Yes:               
