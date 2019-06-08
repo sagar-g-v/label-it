@@ -18,7 +18,8 @@ from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget,
                              QSpinBox, QScrollArea, QSlider, QAction,
                              QPushButton, QGridLayout, QLineEdit, QComboBox,
                              QCheckBox, QCompleter, QDockWidget, QHBoxLayout,
-                             QGroupBox, QVBoxLayout,QMessageBox)
+                             QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
+                             QDialogButtonBox)
 from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, 
                          QSettings, QSize, QPointF,QPoint,Signal,QTimer,
                          Slot)
@@ -52,7 +53,7 @@ class Shape(object):
     vertex_fill_color = DEFAULT_VERTEX_FILL_COLOR
     hvertex_fill_color = DEFAULT_HVERTEX_FILL_COLOR
     point_type = P_ROUND
-    point_size = 8
+    point_size = 6
     scale = 1.0
 
     def __init__(self, label=None, line_color=None, shape_type=None):
@@ -137,8 +138,11 @@ class Shape(object):
                 if len(self.points) == 2:
                     rectangle = self.getRectFromLine(*self.points)
                     line_path.addRect(rectangle)
-                for i in range(len(self.points)):
-                    self.drawVertexR(vrtx_path, i)
+                    for i in range(4):
+                        self.drawVertexR(vrtx_path, i)
+                else:
+                    for i in range(len(self.points)):
+                        self.drawVertex(vrtx_path, i)
             elif self.shape_type == "circle":
                 assert len(self.points) in [1, 2]
                 if len(self.points) == 2:
@@ -184,7 +188,7 @@ class Shape(object):
         else:
             self.vertex_fill_color = Shape.vertex_fill_color
         if shape == self.P_SQUARE:
-            path.addRect(point.x() - d / 2, point.y() - d / 2, d, d)
+            path.addRect(point.x() - d / 2.0, point.y() - d / 2.0, d, d)
         elif shape == self.P_ROUND:
             path.addEllipse(point, d / 2.0, d / 2.0)
         else:
@@ -193,8 +197,7 @@ class Shape(object):
     def drawVertexR(self, path, i):
         d = self.point_size / self.scale
         shape = self.point_type
-        point = self.points[i]
-
+            
         if i == self._highlightIndex:
             size, shape = self._highlightSettings[self._highlightMode]
             d *= size
@@ -202,18 +205,28 @@ class Shape(object):
             self.vertex_fill_color = self.hvertex_fill_color
         else:
             self.vertex_fill_color = Shape.vertex_fill_color
+            
+        rectanglePoints = [self.points[0],self.points[1],
+                           QPoint(self.points[0].x(),self.points[1].y()),
+                           QPoint(self.points[1].x(),self.points[0].y())]
         
-        sign = -1
-        if i == 0:
-            sign = 1
+        point = rectanglePoints[i]
+        signleft,signright = -1,-1
+        
+        if i <= 1:
+            signleft,signright = [1,1] if i == 0 else [-1,-1]
         elif i == 2:
-            sign = -1
+            signleft,signright = 1,-1            
+        elif i == 3:
+            signleft,signright = -1,1
         
+        loffset = signleft*d / 2.0
+        roffset = signright*d / 2.0
         edgepath = QPainterPath()
-        edgepath.moveTo(QPoint(point.x() + sign*d / 2,point.y()))
+        edgepath.moveTo(QPoint(point.x() + loffset,point.y()))
         edgepath.lineTo(point)
-        edgepath.lineTo(QPoint(point.x(),point.y() + sign*d / 2))
-        
+        edgepath.lineTo(QPoint(point.x(),point.y() + roffset))
+
         if shape == self.P_SQUARE:
             path.addPath(edgepath)         
         elif shape == self.P_ROUND:
@@ -231,11 +244,47 @@ class Shape(object):
                 min_i = i
         return min_i
 
+    def nearestVertexR(self, point, epsilon):
+        min_distance = float('inf')
+        min_i = None
+        rectanglePoints = [self.points[0],self.points[1],
+                           QPoint(self.points[0].x(),self.points[1].y()),
+                           QPoint(self.points[1].x(),self.points[0].y())]
+        for i, p in enumerate(rectanglePoints):
+            dist = distance(p - point)
+            if dist <= epsilon and dist < min_distance:
+                min_distance = dist
+                min_i = i
+        return min_i
+    
     def nearestEdge(self, point, epsilon):
         min_distance = float('inf')
         post_i = None
         for i in range(len(self.points)):
             line = [self.points[i - 1], self.points[i]]
+            dist = distancetoline(point, line)
+            if dist <= epsilon and dist < min_distance:
+                min_distance = dist
+                post_i = i
+        return post_i
+
+    def nearestEdgeR(self, point, epsilon):
+        min_distance = float('inf')
+        post_i = None
+        offset = 3.0
+        rectanglePoints = [self.points[0],self.points[1],
+                           QPoint(self.points[0].x(),self.points[1].y()),
+                           QPoint(self.points[1].x(),self.points[0].y())]
+        for i in range(len(rectanglePoints)):
+            if i == 0:
+                line = [rectanglePoints[0]+QPoint(offset,0.0), rectanglePoints[3]-QPoint(offset,0.0)]
+            elif i == 1:
+                line = [rectanglePoints[1]-QPoint(offset,0.0), rectanglePoints[2]+QPoint(offset,0.0)]
+            elif i == 2:
+                line = [rectanglePoints[2]-QPoint(0.0,offset), rectanglePoints[0]+QPoint(0.0,offset)]
+            else:
+                line = [rectanglePoints[3]+QPoint(0.0,offset), rectanglePoints[1]-QPoint(0.0,offset)]  
+                
             dist = distancetoline(point, line)
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
@@ -315,7 +364,8 @@ CURSOR_POINT = Qt.PointingHandCursor
 CURSOR_DRAW = Qt.CrossCursor
 CURSOR_MOVE = Qt.ClosedHandCursor
 CURSOR_GRAB = Qt.OpenHandCursor
-
+CURSOR_VSIZE = Qt.SizeVerCursor
+CURSOR_HSIZE = Qt.SizeHorCursor
 
 class Canvas(QWidget):
 
@@ -442,6 +492,9 @@ class Canvas(QWidget):
 
     def selectedVertex(self):
         return self.hVertex is not None
+    
+    def selectedEdgeR(self):
+        return self.hEdge is not None
 
     def mouseMoveEvent(self, ev):
         """Update line with last point and current coordinates."""
@@ -515,6 +568,10 @@ class Canvas(QWidget):
                 self.boundedMoveVertex(pos)
                 self.repaint()
                 self.movingShape = True
+            elif self.selectedEdgeR():
+                self.boundedMoveEdgeR(pos)
+                self.repaint()
+                self.movingShape = True
             elif self.selectedShape and self.prevPoint:
                 self.overrideCursor(CURSOR_MOVE)
                 self.boundedMoveShape(self.selectedShape, pos)
@@ -530,20 +587,49 @@ class Canvas(QWidget):
         for shape in reversed([s for s in self.shapes if self.isVisible(s)]):
             # Look for a nearby vertex to highlight. If that fails,
             # check if we happen to be inside a shape.
-            index = shape.nearestVertex(pos, self.epsilon)
-            index_edge = shape.nearestEdge(pos, self.epsilon)
-            if index is not None:
+            index, index_edge, rindex, rindex_edge = None, None, None, None 
+            if shape.shape_type == 'rectangle':    
+                rindex = shape.nearestVertexR(pos, self.epsilon)
+                rindex_edge = shape.nearestEdgeR(pos, self.epsilon)
+#                print(rindex_edge)
+            else:
+                index = shape.nearestVertex(pos, self.epsilon)
+                index_edge = shape.nearestEdge(pos, self.epsilon)
+                
+            if rindex is not None:
                 if self.selectedVertex():
                     self.hShape.highlightClear()
-                self.hVertex = index
-                self.hShape = shape
-                self.hEdge = index_edge
-                shape.highlightVertex(index, shape.MOVE_VERTEX)
-#                self.overrideCursor(CURSOR_POINT)
+                self.hVertex,self.hShape = rindex, shape
+                shape.highlightVertex(rindex, shape.MOVE_VERTEX)
+                self.overrideCursor(CURSOR_POINT)
                 self.setToolTip("Click & drag to move point")
                 self.setStatusTip(self.toolTip())
                 self.update()
                 break
+            
+            elif index is not None:
+                if self.selectedVertex():
+                    self.hShape.highlightClear()
+                self.hVertex, self.hEdge, self.hShape = index, index_edge, shape
+                shape.highlightVertex(index, shape.MOVE_VERTEX)
+                self.overrideCursor(CURSOR_POINT)
+                self.setToolTip("Click & drag to move point")
+                self.setStatusTip(self.toolTip())
+                self.update()
+                break
+
+            elif rindex_edge is not None:
+                if self.selectedEdgeR():
+                    self.hShape.highlightClear()
+                if rindex_edge == 0 or rindex_edge == 1:
+                    self.overrideCursor(CURSOR_VSIZE)
+                else:
+                    self.overrideCursor(CURSOR_HSIZE)
+                self.hEdge, self.hShape = rindex_edge, shape
+                self.setToolTip("Click & drag to move edge")
+                self.setStatusTip(self.toolTip())
+                self.update()
+                break 
 #            elif shape.containsPoint(pos):
 #                if self.selectedVertex():
 #                    self.hShape.highlightClear()
@@ -709,11 +795,51 @@ class Canvas(QWidget):
 
     def boundedMoveVertex(self, pos):
         index, shape = self.hVertex, self.hShape
-        point = shape[index]
+        if shape.shape_type == 'rectangle':
+            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
+            point = rectanglePoints[index]
+            if self.outOfPixmap(pos):
+                pos = self.intersectionPoint(point, pos)
+            shiftPos = pos - point
+            if index <= 1:
+               shape.moveVertexBy(index, shiftPos)
+            elif index == 2:
+                shiftPos = pos - shape[0]
+                shape.moveVertexBy(0, QPointF(shiftPos.x(), 0.0))
+                shiftPos = pos - shape[1]
+                shape.moveVertexBy(1, QPointF(0.0, shiftPos.y()))
+            else:
+                shiftPos = pos - shape[1]
+                shape.moveVertexBy(1, QPointF(shiftPos.x(), 0.0))
+                shiftPos = pos - shape[0]
+                shape.moveVertexBy(0, QPointF(0.0, shiftPos.y()))
+        else:
+            point = shape[index]
+            if self.outOfPixmap(pos):
+                pos = self.intersectionPoint(point, pos)
+            shape.moveVertexBy(index, pos - point)
+        
+    def boundedMoveEdgeR(self, pos):
+        index, shape = self.hEdge, self.hShape
+        rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
+        
+        point = rectanglePoints[index]
         if self.outOfPixmap(pos):
             pos = self.intersectionPoint(point, pos)
-        shape.moveVertexBy(index, pos - point)
+         
+        shiftPos = pos - point        
+        shift = None
+        if index <= 1:
+           shift = QPointF(0.0, shiftPos.y())
+           shape.moveVertexBy(index, shift)
+        elif index == 2:
+            shift = QPointF(shiftPos.x(), 0.0)
+            shape.moveVertexBy(0, shift)
+        elif index == 3:
+            shift = QPointF(shiftPos.x(), 0.0)
+            shape.moveVertexBy(1, shift)
 
+        
     def boundedMoveShape(self, shape, pos):
         if self.outOfPixmap(pos):
             return False  # No need to move
@@ -1014,6 +1140,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon('icons/appicon.png'))
         
         self.zoomWidget = ZoomWidget()
+        self.colorDialog = ColorDialog(parent=self)
         
         self.canvas = Canvas(parent=self)
         self.canvas.zoomRequest.connect(self.zoomRequest)
@@ -1056,6 +1183,8 @@ class MainWindow(QMainWindow):
         self.csvdata = []
         self.shouldItrack = True
         self.canclose = True
+        self.lineColor = None
+        self.fillColor = None
         self.opened = not self.canclose
         self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
         
@@ -1227,22 +1356,17 @@ class MainWindow(QMainWindow):
         pass
     
     def openFile(self,filetype='file'):
-        try:
-            if filetype == 'file':
-                filename = QFileDialog.getOpenFileName(self, '%s - Open file' % __appname__, '',
-                    'Video Files (*.avi;*.mp4);; Image Files (*.jpg; *.png; *.jpeg; *.bmp)')[0]
-                if filename and not os.path.isdir(filename):
-                    self.queueEvent(functools.partial(self.loadFile, filename or ""))
-                    
-            elif filetype == 'dir':
-                targetDirPath = str(QFileDialog.getExistingDirectory(
-                        self, '%s - Open Directory' % __appname__,'',
-                        QFileDialog.ShowDirsOnly |
-                        QFileDialog.DontResolveSymlinks))
-                self.loadDirImages(targetDirPath)
+        if filetype == 'file':
+            filename = QFileDialog.getOpenFileName(self, '%s - Open file' % __appname__, '',
+                'Video Files (*.avi;*.mp4);; Image Files (*.jpg; *.png; *.jpeg; *.bmp)')[0]
+            if filename and not os.path.isdir(filename):
+                self.queueEvent(functools.partial(self.loadFile, filename or ""))
                 
-        except IOError or AttributeError:
-            QMessageBox.warning(self, "Warning", "No file selected")
+        elif filetype == 'dir':
+            targetDirPath = str(QFileDialog.getExistingDirectory(
+                    self, '%s - Open Directory' % __appname__,'',
+                    QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
+            self.loadDirImages(targetDirPath)
 
     def closeEvent(self, event):
         self.reply = QMessageBox.question(self, 'Confirm Exit',
@@ -1310,6 +1434,7 @@ class MainWindow(QMainWindow):
             return False
         self.loadPixmapToCanvas()
         self.toggleActions(True)
+        
     def loadDirImages(self, dirpath, pattern=None, load=True):
         pass
     
@@ -1439,6 +1564,26 @@ class MainWindow(QMainWindow):
             self.canvas.selectedShape.fill_color = color
             self.canvas.update()
 #            self.setDirty()
+            
+    def chooseColor1(self):
+        color = self.colorDialog.getColor(
+            self.lineColor, 'Choose line color', default=DEFAULT_LINE_COLOR)
+        if color:
+            self.lineColor = color
+            # Change the color for all shape lines:
+            Shape.line_color = self.lineColor
+            self.canvas.update()
+#            self.setDirty()
+
+    def chooseColor2(self):
+        color = self.colorDialog.getColor(
+            self.fillColor, 'Choose fill color', default=DEFAULT_FILL_COLOR)
+        if color:
+            self.fillColor = color
+            Shape.fill_color = self.fillColor
+            self.canvas.update()
+#            self.setDirty()
+
 
     def setEditMode(self):
         self.toggleDrawMode(True)
@@ -1609,7 +1754,35 @@ class ZoomWidget(QSpinBox):
         fm = QFontMetrics(self.font())
         width = fm.width(str(self.maximum()))
         return QSize(width, height)
-    
+
+class ColorDialog(QColorDialog):
+
+    def __init__(self, parent=None):
+        super(ColorDialog, self).__init__(parent)
+        self.setOption(QColorDialog.ShowAlphaChannel)
+        # The Mac native dialog does not support our restore button.
+        self.setOption(QColorDialog.DontUseNativeDialog)
+        # Add a restore defaults button.
+        # The default is set at invocation time, so that it
+        # works across dialogs for different elements.
+        self.default = None
+        self.bb = self.layout().itemAt(1).widget()
+        self.bb.addButton(QDialogButtonBox.RestoreDefaults)
+        self.bb.clicked.connect(self.checkRestore)
+
+    def getColor(self, value=None, title=None, default=None):
+        self.default = default
+        if title:
+            self.setWindowTitle(title)
+        if value:
+            self.setCurrentColor(value)
+        return self.currentColor() if self.exec_() else None
+
+    def checkRestore(self, button):
+        if self.bb.buttonRole(button) & \
+                QDialogButtonBox.ResetRole and self.default:
+            self.setCurrentColor(self.default)
+            
 class struct(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
