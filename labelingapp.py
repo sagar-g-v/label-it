@@ -7,24 +7,21 @@ Created on Fri Jun  7 10:16:54 2019
 import os
 import sys
 import cv2
-import pandas as pd
 import copy
 import math
 import hashlib
 import functools
 import numpy as np
-from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget,
-                             QLabel, QScrollBar, QMenu, QToolButton,
-                             QSpinBox, QScrollArea, QSlider, QAction,
-                             QPushButton, QGridLayout, QLineEdit, QComboBox,
-                             QCheckBox, QCompleter, QDockWidget, QHBoxLayout,
-                             QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
-                             QDialogButtonBox)
-from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, 
-                         QSettings, QSize, QPointF,QPoint,Signal,QTimer,
-                         Slot)
-from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath,
-                        QFontMetrics, QImage, QCursor, QPainter,QIntValidator)
+import pandas as pd
+from natsort import natsort_keygen ,ns
+
+from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
+                            QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
+                            QCheckBox, QCompleter, QDockWidget, QHBoxLayout, QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
+                            QDialogButtonBox,)
+from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QSettings, QSize, QPointF,QPoint,Signal,QTimer,Slot)
+from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath, QFontMetrics, QImage,
+                        QCursor, QPainter,QIntValidator,QPalette)
 from qtpy import QT_VERSION
 QT5 = QT_VERSION[0] == '5'
 
@@ -516,7 +513,12 @@ class Canvas(QWidget):
                 pos = self.transformPos(ev.posF())
         except AttributeError:
             return
-
+        if not self.outOfPixmap(pos):
+            self.parent().window().labelCoordinates.setText(
+            'X: %d; Y: %d ' % (pos.x(), pos.y()))
+        else:
+            self.parent().window().labelCoordinates.clear()
+        
         self.prevMovePoint = pos
         self.restoreCursor()
 
@@ -713,6 +715,7 @@ class Canvas(QWidget):
                             self.finalise()
                 elif not self.outOfPixmap(pos):
                     # Create new shape.
+                    self.drawingPolygon.emit(True)
                     self.current = Shape(shape_type=self.createMode)
                     self.current.addPoint(pos)
                     if self.createMode == 'point':
@@ -722,7 +725,6 @@ class Canvas(QWidget):
                             self.current.shape_type = 'circle'
                         self.line.points = [pos, pos]
                         self.setHiding()
-                        self.drawingPolygon.emit(True)
                         self.update()
             else:
                 self.selectShapePoint(pos)
@@ -803,19 +805,20 @@ class Canvas(QWidget):
                 shape.highlight(index, shape.MOVE_VERTEX_R)
             else:
                 shape.highlight(index, shape.MOVE_VERTEX)
+            self.selectShape(shape)
             return
         elif self.selectedEdgeR():
-            pass
-#            index, shape = self.hEdgeR, self.hShape
+            index, shape = self.hEdgeR, self.hShape
 #            shape.highlight(index, shape.MOVE_EDGE)
+            
+            if self.isVisible(shape) and shape.containsPoint(point):
+                self.selectShape(shape)
+            return
             
         for shape in reversed(self.shapes):
             if self.isVisible(shape) and shape.containsPoint(point):
-                shape.selected = True
-                self.selectedShape = shape
-                self.calculateOffsets(shape, point)
-                self.setHiding()
-                self.selectionChanged.emit(True)
+                self.calculateOffsets(shape,point)
+                self.selectShape(shape)
                 return
 
     def calculateOffsets(self, shape, point):
@@ -982,6 +985,20 @@ class Canvas(QWidget):
             drawing_shape.fill = True
             drawing_shape.fill_color.setAlpha(64)
             drawing_shape.paint(p)
+            
+#        self.setAutoFillBackground(True)
+        
+        if not self.pixmap.isNull():
+            pal = QPalette()
+            pal.setColor(self.backgroundRole(), QColor(80, 80, 80, 255))
+            self.setPalette(pal)
+        else:
+            pal = QPalette()
+            pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
+            defaultPixmap = QPixmap(__appIcon__)
+            p.drawPixmap(0,0,defaultPixmap)
+            self.setPalette(pal)
+            self.setEnabled(False)
 
         p.end()
 
@@ -1031,6 +1048,7 @@ class Canvas(QWidget):
         self.current = None
         self.setHiding(False)
         self.newShape.emit()
+        self.drawingPolygon.emit(False)
         self.update()
 
     def closeEnough(self, p1, p2):
@@ -1198,6 +1216,7 @@ class Canvas(QWidget):
 
 
 __appname__ = 'mylabelingapp'
+__appIcon__ = './icons/appicon.png'
 
 class MainWindow(QMainWindow):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
@@ -1207,7 +1226,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(__appname__)
         self.showNormal()
         self.setGeometry(30 ,30 ,1300 ,695)
-        self.setWindowIcon(QIcon('icons/appicon.png'))
+        self.setWindowIcon(QIcon(__appIcon__))
         
         self.zoomWidget = ZoomWidget()
         self.colorDialog = ColorDialog(parent=self)
@@ -1244,6 +1263,8 @@ class MainWindow(QMainWindow):
         self.image = QImage()
         self.video = None
         self.videobuffer = []
+        self.imagefiles = []
+        self.dirPath = None
         self.frameNum = None
         self.total_frames = None
         self.Play_status = False
@@ -1327,7 +1348,7 @@ class MainWindow(QMainWindow):
         Openfolder  = action(
                 'Open Folder',
                 lambda: self.openFile(filetype='dir'), 
-                'Ctrl+O', 'open-folder',
+                'Ctrl+Shift+O', 'open-folder',
                 'Open Folder'
                 )
         Openfile  = action(
@@ -1377,6 +1398,7 @@ class MainWindow(QMainWindow):
                               Openfolder=Openfolder,undo=undo, Close=Close)
         
         addActions(self.canvas.menus[0], self.actions.menu)
+        addActions(self.canvas, self.actions.menu)
         self.canvas.edgeSelected.connect(self.actions.addPoint.setEnabled)
 #        self.actions.AiMode.setEnabled(False)
         
@@ -1429,14 +1451,15 @@ class MainWindow(QMainWindow):
         if filetype == 'file':
             filename = QFileDialog.getOpenFileName(self, '%s - Open file' % __appname__, '',
                 'Video Files (*.avi;*.mp4);; Image Files (*.jpg; *.png; *.jpeg; *.bmp)')[0]
-            if filename and not os.path.isdir(filename):
+            if os.path.isfile(filename):
                 self.queueEvent(functools.partial(self.loadFile, filename or ""))
                 
         elif filetype == 'dir':
             targetDirPath = str(QFileDialog.getExistingDirectory(
-                    self, '%s - Open Directory' % __appname__,'',
+                    self, '%s - Open Dir' % __appname__,'',
                     QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
-            self.loadDirImages(targetDirPath)
+            if os.path.isdir(targetDirPath):
+                self.loadDirImages(targetDirPath)
 
     def closeEvent(self, event):
         self.reply = QMessageBox.question(self, 'Confirm Exit',
@@ -1506,7 +1529,26 @@ class MainWindow(QMainWindow):
         self.toggleActions(True)
         
     def loadDirImages(self, dirpath, pattern=None, load=True):
-        pass
+        files = os.listdir(dirpath)
+        self.dirPath = dirpath
+#        formats = [".%s"%fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
+        for  file in files:
+#            compatible = os.path.splitext(file) in formats
+            compatible = ('.png' in file) or ('.PNG' in file) or ('.jpg' in file) or ('.jpeg' in file) or ('.bmp' in file)
+            if not compatible is True:
+                files.remove(file)
+                
+        files_sortkeys = natsort_keygen(alg = ns.INT)
+        files.sort(key = files_sortkeys)
+        for file in files:
+            self.imagefiles.append(os.path.join(dirpath,file))
+    
+        self.totalframes = len(files)
+        self.frameNum = 0
+        self.updateFrameControls()
+        self.image = self.convertToPixmap(cv2.imread(self.imagefiles[self.frameNum]))
+        self.loadPixmapToCanvas()
+        self.toggleActions(True)
     
     def loadPixmapToCanvas(self):        
         self.canvas.loadPixmap(QPixmap.fromImage(self.image))
@@ -1526,8 +1568,7 @@ class MainWindow(QMainWindow):
             self.frameNum += 1
             self.image = self.convertToPixmap(self.videobuffer[self.frameNum])
             self.loadPixmapToCanvas()
-            self.scrollBars[Qt.Horizontal].setValue(self.previous_Scroll_pos[0])
-            self.scrollBars[Qt.Vertical].setValue(self.previous_Scroll_pos[1])
+            self.setScrollbarPos(self.previous_Scroll_pos[0],self.previous_Scroll_pos[1])
             return True
         return False
 
@@ -1548,19 +1589,19 @@ class MainWindow(QMainWindow):
 
     def toggleDrawingSensitive(self, drawing=True):
         """In the middle of drawing, toggling between modes should be disabled."""
-        
+        self.canvas.setEditing(not drawing)
+        self.actions.editMode.setEnabled(not drawing)
+#        self.actions.undoLastPoint.setEnabled(drawing)
+        self.actions.undo.setEnabled(not drawing)
+        self.actions.delete.setEnabled(not drawing)
+        self.actions.createPolygonMode.setEnabled(not drawing)
+        self.actions.createRectangleMode.setEnabled(not drawing)
+        self.actions.createCircleMode.setEnabled(not drawing)
+        self.actions.createLineMode.setEnabled(not drawing)
+        self.actions.createPointMode.setEnabled(not drawing)
+        self.actions.createLineStripMode.setEnabled(not drawing)
         if not drawing:
-            self.canvas.setEditing(True)
-            self.actions.editMode.setEnabled(not drawing)
-    #        self.actions.undoLastPoint.setEnabled(drawing)
-            self.actions.undo.setEnabled(not drawing)
-            self.actions.delete.setEnabled(not drawing)
-            self.actions.createPolygonMode.setEnabled(True)
-            self.actions.createRectangleMode.setEnabled(True)
-            self.actions.createCircleMode.setEnabled(True)
-            self.actions.createLineMode.setEnabled(True)
-            self.actions.createPointMode.setEnabled(True)
-            self.actions.createLineStripMode.setEnabled(True)
+            self.toggleDrawMode(edit= drawing,createMode=self.canvas.createMode)
 
     def toggleDrawMode(self, edit=True, createMode='polygon'):
         self.canvas.setEditing(edit)
@@ -1770,6 +1811,10 @@ class MainWindow(QMainWindow):
         bar = self.scrollBars[orientation]
         bar.setValue(bar.value() + bar.singleStep() * units)
 
+    def setScrollbarPos(self,horizantal,vertical):
+        self.scrollBars[Qt.Horizontal].setValue(horizantal)
+        self.scrollBars[Qt.Vertical].setValue(vertical)
+        
     def setZoom(self, value):
         self.zoomMode = self.MANUAL_ZOOM
         self.zoomWidget.setValue(value)
