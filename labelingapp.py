@@ -89,7 +89,7 @@ class Shape(object):
         if value is None:
             value = 'polygon'
         if value not in ['polygon', 'rectangle', 'point',
-           'line', 'circle', 'linestrip']:
+           'line', 'circle', 'polyline']:
             raise ValueError('Unexpected shape_type: {}'.format(value))
         self._shape_type = value
 
@@ -167,7 +167,7 @@ class Shape(object):
                     line_path.addEllipse(rectangle)
                 for i in range(len(self.points)):
                     self.drawVertex(vrtx_path, i)
-            elif self.shape_type == "linestrip":
+            elif self.shape_type == "polyline":
                 line_path.moveTo(self.points[0])
                 for i, p in enumerate(self.points):
                     line_path.lineTo(p)
@@ -439,7 +439,7 @@ class Canvas(QWidget):
     @createMode.setter
     def createMode(self, value):
         if value not in ['polygon', 'rectangle', 'circle',
-           'line', 'point', 'linestrip']:
+           'line', 'point', 'polyline']:
             raise ValueError('Unsupported createMode: %s' % value)
         self._createMode = value
 
@@ -514,9 +514,11 @@ class Canvas(QWidget):
         except AttributeError:
             return
         if not self.outOfPixmap(pos):
+            self.setToolTip("Image")
             self.parent().window().labelCoordinates.setText(
-            'X: %d; Y: %d ' % (pos.x(), pos.y()))
+            'Resolution: (%d x %d); X: <b>%d</b>; Y: <b>%d</b> ' % (self.pixmap.width(), self.pixmap.height(), pos.x(), pos.y()))
         else:
+            self.setToolTip("Canvas")
             self.parent().window().labelCoordinates.clear()
         
         self.prevMovePoint = pos
@@ -543,7 +545,7 @@ class Canvas(QWidget):
                 color = self.current.line_color
                 self.overrideCursor(CURSOR_POINT)
                 self.current.highlight(0, Shape.NEAR_VERTEX)
-            if self.createMode in ['polygon', 'linestrip']:
+            if self.createMode in ['polygon', 'polyline']:
                 self.line[0] = self.current[-1]
                 self.line[1] = pos
             elif self.createMode == 'rectangle':
@@ -596,7 +598,6 @@ class Canvas(QWidget):
         # - Highlight shapes
         # - Highlight vertex
         # Update shape/vertex fill and tooltip value accordingly.
-        self.setToolTip("Image")
         for shape in reversed([s for s in self.shapes if self.isVisible(s)]):
             # Look for a nearby vertex to highlight. If that fails,
             # check if we happen to be inside a shape.
@@ -679,7 +680,7 @@ class Canvas(QWidget):
                 self.hEdge is None and
                 self.prevMovePoint is None):
             return
-        if not self.hShape.shape_type in ['polygon', 'linestrip']:
+        if not self.hShape.shape_type in ['polygon', 'polyline']:
             return
         shape = self.hShape
         index = self.hEdge
@@ -708,7 +709,7 @@ class Canvas(QWidget):
                         assert len(self.current.points) == 1
                         self.current.points = self.line.points
                         self.finalise()
-                    elif self.createMode == 'linestrip':
+                    elif self.createMode == 'polyline':
                         self.current.addPoint(self.line[1])
                         self.line[0] = self.current[-1]
                         if int(ev.modifiers()) == Qt.ControlModifier:
@@ -1022,7 +1023,7 @@ class Canvas(QWidget):
     def finalise(self):
         assert self.current
         self.current.close()
-#        if self.current.shape_type == 'linestrip':
+#        if self.current.shape_type == 'polyline':
 #            print(self.current.points) 
         if self.current.shape_type == 'rectangle':
             w,h =  self.current.size()
@@ -1166,7 +1167,7 @@ class Canvas(QWidget):
         assert self.shapes
         self.current = self.shapes.pop()
         self.current.setOpen()
-        if self.createMode in ['polygon', 'linestrip']:
+        if self.createMode in ['polygon', 'polyline']:
             self.line.points = [self.current[-1], self.current[0]]
         elif self.createMode in ['rectangle', 'line', 'circle']:
             self.current.points = self.current.points[0:1]
@@ -1321,12 +1322,12 @@ class MainWindow(QMainWindow):
             'Start drawing points',
             enabled=False,
         )
-        createLineStripMode = action(
-            'LineStrip',
-            lambda: self.toggleDrawMode(False, createMode='linestrip'),
+        createPolyLineMode = action(
+            'PolyLine',
+            lambda: self.toggleDrawMode(False, createMode='polyline'),
             'L',
             'polyline',
-            'Start drawing linestrip. Ctrl+LeftClick ends creation.',
+            'Start drawing polyline. Ctrl+LeftClick ends creation.',
             enabled=False,
         )
         addPoint = action('Add Point to Edge', self.canvas.addPointToEdge,
@@ -1371,7 +1372,7 @@ class MainWindow(QMainWindow):
             createCircleMode,
             createLineMode,
             createPointMode,
-            createLineStripMode,
+            createPolyLineMode,
             editMode,
             delete,
             shapeLineColor,
@@ -1386,13 +1387,13 @@ class MainWindow(QMainWindow):
             createCircleMode,
             createLineMode,
             createPointMode,
-            createLineStripMode,
+            createPolyLineMode,
             editMode,
         )
         self.actions = struct(createPolygonMode=createPolygonMode,createCircleMode=createCircleMode,
                               createRectangleMode=createRectangleMode,addPoint=addPoint,
                               createLineMode=createLineMode, createPointMode=createPointMode,
-                              createLineStripMode=createLineStripMode,menu=menu,onLoadActive=onLoadActive,
+                              createPolyLineMode=createPolyLineMode,menu=menu,onLoadActive=onLoadActive,
                               shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,
                               Quit=Quit, editMode=editMode, delete=delete, Openfile=Openfile,
                               Openfolder=Openfolder,undo=undo, Close=Close)
@@ -1541,16 +1542,16 @@ class MainWindow(QMainWindow):
     def loadDirImages(self, dirpath, pattern=None, load=True):
         files = os.listdir(dirpath)
         self.dirPath = dirpath
-        filteredimagefiles = []
+        filteredfiles = []
         #formats = [".%s"%fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
         for  file in files:
             if self.isCompatible(file,filetype = 'img'):
-                filteredimagefiles.append(file)
+                filteredfiles.append(file)
                 
         files_sortkeys = natsort_keygen(alg = ns.INT)
-        filteredimagefiles.sort(key = files_sortkeys)
+        filteredfiles.sort(key = files_sortkeys)
         
-        for file in filteredimagefiles:
+        for file in filteredfiles:
             imagepath = os.path.abspath(os.path.join(dirpath,file))
             if os.path.isfile(imagepath):
                 self.imagefiles.append(imagepath)
@@ -1613,7 +1614,7 @@ class MainWindow(QMainWindow):
         self.actions.createCircleMode.setEnabled(not drawing)
         self.actions.createLineMode.setEnabled(not drawing)
         self.actions.createPointMode.setEnabled(not drawing)
-        self.actions.createLineStripMode.setEnabled(not drawing)
+        self.actions.createPolyLineMode.setEnabled(not drawing)
         if not drawing:
             self.toggleDrawMode(edit= drawing,createMode=self.canvas.createMode)
 
@@ -1626,7 +1627,7 @@ class MainWindow(QMainWindow):
             self.actions.createCircleMode.setEnabled(True)
             self.actions.createLineMode.setEnabled(True)
             self.actions.createPointMode.setEnabled(True)
-            self.actions.createLineStripMode.setEnabled(True)
+            self.actions.createPolyLineMode.setEnabled(True)
         else:
             if createMode == 'polygon':
                 self.actions.createPolygonMode.setEnabled(False)
@@ -1634,42 +1635,42 @@ class MainWindow(QMainWindow):
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
-                self.actions.createLineStripMode.setEnabled(True)
+                self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == 'rectangle':
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(False)
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
-                self.actions.createLineStripMode.setEnabled(True)
+                self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == 'line':
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(True)
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(False)
                 self.actions.createPointMode.setEnabled(True)
-                self.actions.createLineStripMode.setEnabled(True)
+                self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == 'point':
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(True)
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(False)
-                self.actions.createLineStripMode.setEnabled(True)
+                self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == "circle":
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(True)
                 self.actions.createCircleMode.setEnabled(False)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
-                self.actions.createLineStripMode.setEnabled(True)
-            elif createMode == "linestrip":
+                self.actions.createPolyLineMode.setEnabled(True)
+            elif createMode == "polyline":
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(True)
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
-                self.actions.createLineStripMode.setEnabled(False)
+                self.actions.createPolyLineMode.setEnabled(False)
             else:
                 raise ValueError('Unsupported createMode: %s' % createMode)
         self.actions.editMode.setEnabled(not edit)
