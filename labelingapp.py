@@ -878,11 +878,11 @@ class Canvas(QWidget):
         if index == 1:
             if h + shiftPos.y() >= 10.0:
                shift = QPointF(0.0, shiftPos.y())
-               shape.moveVertexBy(index, shift)
+               shape.moveVertexBy(1, shift)
         elif index == 0:
             if h - shiftPos.y() >= 10.0:
                shift = QPointF(0.0, shiftPos.y())
-               shape.moveVertexBy(index, shift)
+               shape.moveVertexBy(0, shift)
         elif index == 2:
             if w - shiftPos.x() >= 10.0:
                 shift = QPointF(shiftPos.x(), 0.0)
@@ -996,7 +996,8 @@ class Canvas(QWidget):
         else:
             pal = QPalette()
             pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
-            defaultPixmap = QPixmap(__appIcon__)
+            icon = QIcon(__appIcon__)
+            defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
             p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
             self.setPalette(pal)
             self.setEnabled(False)
@@ -1155,7 +1156,86 @@ class Canvas(QWidget):
             self.update()
         elif key == Qt.Key_Return and self.canCloseShape():
             self.finalise()
+        
+        mods = ev.modifiers()
+        if Qt.ControlModifier == mods:
+            #print("Ctrl pressed")
+            if key == Qt.Key_Left and self.selectedShape:
+                self.moveOnePixel('LeftEOut')
+            elif key == Qt.Key_Right and self.selectedShape:
+                self.moveOnePixel('RightEOut')
+            elif key == Qt.Key_Up and self.selectedShape:
+                self.moveOnePixel('UpEOut')
+            elif key == Qt.Key_Down and self.selectedShape:
+                self.moveOnePixel('DownEOut')
+        elif (Qt.ControlModifier|Qt.ShiftModifier) == mods:
+            #print("Ctrl+Shift pressed")
+            if key == Qt.Key_Left and self.selectedShape:
+                self.moveOnePixel('LeftEIn')
+            elif key == Qt.Key_Right and self.selectedShape:
+                self.moveOnePixel('RightEIn')
+            elif key == Qt.Key_Up and self.selectedShape:
+                self.moveOnePixel('UpEIn')
+            elif key == Qt.Key_Down and self.selectedShape:
+                self.moveOnePixel('DownEIn')
+        elif Qt.AltModifier == mods:
+            #print("Alt pressed")
+            if key == Qt.Key_Up and self.selectedShape:
+                self.moveOnePixel('ExpandOut')
+            elif key == Qt.Key_Down and self.selectedShape:
+                self.moveOnePixel('ExpandIn')
+        else:
+            if key == Qt.Key_Left and self.selectedShape:
+                self.moveOnePixel('Left')
+            elif key == Qt.Key_Right and self.selectedShape:
+                self.moveOnePixel('Right')
+            elif key == Qt.Key_Up and self.selectedShape:
+                self.moveOnePixel('Up')
+            elif key == Qt.Key_Down and self.selectedShape:
+                self.moveOnePixel('Down')
 
+    def moveOutOfBound(self, step):
+        points = [p1+p2 for p1, p2 in zip(self.selectedShape.points, [step]*len(self.selectedShape.points))]
+        return True in map(self.outOfPixmap, points)
+    
+    def moveOnePixel(self, direction):
+        if direction == 'Left' and not self.moveOutOfBound(QPointF(-1.0, 0)):
+            self.selectedShape.moveBy(QPointF(-1.0, 0))
+        elif direction == 'Right' and not self.moveOutOfBound(QPointF(1.0, 0)):
+            self.selectedShape.moveBy(QPointF(1.0, 0))
+        elif direction == 'Up' and not self.moveOutOfBound(QPointF(0, -1.0)):
+            self.selectedShape.moveBy(QPointF(0, -1.0))
+        elif direction == 'Down' and not self.moveOutOfBound(QPointF(0, 1.0)):
+            self.selectedShape.moveBy(QPointF(0, 1.0))
+        if self.selectedShape.shape_type == 'rectangle':
+            w,h = self.selectedShape.size()
+            if direction == 'LeftEOut' and not self.moveOutOfBound(QPointF(-1.0, 0)):      
+                self.selectedShape.moveVertexBy(0, QPointF(-1.0, 0))
+            elif direction == 'RightEOut' and not self.moveOutOfBound(QPointF(1.0, 0)):
+                self.selectedShape.moveVertexBy(1, QPointF(1.0, 0))
+            elif direction == 'UpEOut' and not self.moveOutOfBound(QPointF(0, -1.0)):
+                self.selectedShape.moveVertexBy(0, QPointF(0, -1.0))
+            elif direction == 'DownEOut' and not self.moveOutOfBound(QPointF(0, 1.0)):
+                self.selectedShape.moveVertexBy(1, QPointF(0, 1.0))
+            elif direction == 'LeftEIn' and (w + 1.0 >=10):
+                self.selectedShape.moveVertexBy(0, QPointF(1.0, 0))
+            elif direction == 'RightEIn' and (w - 1.0 >=10):
+                self.selectedShape.moveVertexBy(1, QPointF(-1.0, 0))
+            elif direction == 'UpEIn' and (h + 1.0 >=10):
+                self.selectedShape.moveVertexBy(0, QPointF(0, 1.0))
+            elif direction == 'DownEIn' and (h - 1.0 >=10):
+                self.selectedShape.moveVertexBy(1, QPointF(0, -1.0))
+            elif direction == 'ExpandOut' and (not self.moveOutOfBound(QPointF(-1.0, -1.0)) or\
+                                               not self.moveOutOfBound(QPointF(1.0, 1.0)) ):
+                self.selectedShape.moveVertexBy(0, QPointF(-1.0, -1.0))
+                self.selectedShape.moveVertexBy(1, QPointF(1.0, 1.0))
+            elif direction == 'ExpandIn'and not((h - 1.0 <10) or (h + 1.0 <10)) and\
+                                            not((w - 1.0 <10) or (w + 1.0 <10)):
+                self.selectedShape.moveVertexBy(0, QPointF(1.0, 1.0))
+                self.selectedShape.moveVertexBy(1, QPointF(-1.0, -1.0))                
+        self.shapeMoved.emit()
+        self.repaint()
+                
     def setLastLabel(self, text):
         assert text
         self.shapes[-1].label = text
@@ -1405,7 +1485,7 @@ class MainWindow(QMainWindow):
         
         button = functools.partial(newButton,self)
         self.fitWindow_button = button('&Fit-To-Canvas', self.setFitWindow,'Tab', 'expand',
-                           'Zoom to window size',style=Qt.ToolButtonTextBesideIcon,checkable=True,)
+                           'Fit to canvas size',style=Qt.ToolButtonTextBesideIcon,checkable=True,)
         
         self.play_button = button('&Play', self.togglePlayMode,'Space', 'play',
                            'Start playing video',stylesheet="border-radius: 4px;",IconSize=QSize(65,65))
