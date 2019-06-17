@@ -9,11 +9,11 @@ import sys
 import cv2
 import copy
 import math
+import natsort
 import hashlib
 import functools
 import numpy as np
 import pandas as pd
-from natsort import natsort_keygen ,ns
 
 from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
                             QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
@@ -1389,7 +1389,7 @@ class MainWindow(QMainWindow):
         createLineMode = action(
             'Line',
             lambda: self.toggleDrawMode(False, createMode='line'),
-            'Ctrl+L',
+            'L',
             'line',
             'Start drawing lines',
             enabled=False,
@@ -1405,7 +1405,7 @@ class MainWindow(QMainWindow):
         createPolyLineMode = action(
             'PolyLine',
             lambda: self.toggleDrawMode(False, createMode='polyline'),
-            'L',
+            'Ctrl+L',
             'polyline',
             'Start drawing polyline. Ctrl+LeftClick ends creation.',
             enabled=False,
@@ -1418,10 +1418,10 @@ class MainWindow(QMainWindow):
                   'Move and Edit',enabled=False,)
 
         shapeLineColor = action(
-            'Shape &Line Color', self.chshapeLineColor, icon='pen-color',
+            '&Line Color', self.chshapeLineColor, icon='pen-color',
             tip='Change the line color for this specific shape', enabled=False)
         shapeFillColor = action(
-            'Shape &Fill Color', self.chshapeFillColor, icon='fill-color',
+            '&Fill Color', self.chshapeFillColor, icon='fill-color',
             tip='Change the fill color for this specific shape', enabled=False)
         
         Quit = action('Quit', self.close, 'Ctrl+Q', 'quit',
@@ -1439,29 +1439,29 @@ class MainWindow(QMainWindow):
                 'Open File'
                 )
         Close  = action('Close File', self.closeFile, 'Ctrl+Shift+W', 'close',
-                      'Close File')
+                      'Close File',enabled=False)
         
         delete = action("Delete", self.deleteSelectedShape,'Delete', 'delete', 
-                        "Delete selected Shape",)
+                        "Delete selected Shape",enabled=False)
         
         undo = action("Undo", self.undoDeletetion,'Ctrl+Z', 'undo', 
-                        "Undo",)
+                        "Undo",enabled=False)
         menu=(
-            createPolygonMode,
             createRectangleMode,
+            createPolyLineMode,
+            createPolygonMode,
             createCircleMode,
             createLineMode,
             createPointMode,
-            createPolyLineMode,
-            editMode,
-            delete,
             shapeLineColor,
             shapeFillColor,
+            editMode,
+            delete,
             undo,
             addPoint,
         )
         onLoadActive=(
-#            close,
+            Close,
             createPolygonMode,
             createRectangleMode,
             createCircleMode,
@@ -1481,7 +1481,6 @@ class MainWindow(QMainWindow):
         addActions(self.canvas.menus[0], self.actions.menu)
         addActions(self.canvas, self.actions.menu)
         self.canvas.edgeSelected.connect(self.actions.addPoint.setEnabled)
-#        self.actions.AiMode.setEnabled(False)
         
         button = functools.partial(newButton,self)
         self.fitWindow_button = button('&Fit-To-Canvas', self.setFitWindow,'Tab', 'expand',
@@ -1628,7 +1627,7 @@ class MainWindow(QMainWindow):
             if self.isCompatible(file,filetype = 'img'):
                 filteredfiles.append(file)
                 
-        files_sortkeys = natsort_keygen(alg = ns.INT)
+        files_sortkeys = natsort.natsort_keygen(alg = natsort.ns.INT)
         filteredfiles.sort(key = files_sortkeys)
         
         for file in filteredfiles:
@@ -1645,7 +1644,8 @@ class MainWindow(QMainWindow):
         self.loadPixmapToCanvas()
         self.toggleActions(True)
         
-    def loadPixmapToCanvas(self):        
+    def loadPixmapToCanvas(self):
+        self.canvas.setEnabled(False)
         self.canvas.loadPixmap(QPixmap.fromImage(self.image))
         self.canvas.setEnabled(True)
         self.zoomWidget.setEnabled(True)
@@ -1656,7 +1656,6 @@ class MainWindow(QMainWindow):
     def loadNextframe(self):
         #print("next")
         self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
-        self.canvas.setEnabled(False)
         if not len(self.videobuffer) == 0 and (self.totalframes <= len(self.videobuffer)):
             if self.frameNum+1 >= len(self.videobuffer):
                 return False
@@ -1670,7 +1669,6 @@ class MainWindow(QMainWindow):
     def loadPreviousframe(self):
         #print("previous")
         self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
-        self.canvas.setEnabled(False)
         if not len(self.videobuffer) == 0 and (self.totalframes <= len(self.videobuffer)):
             if self.frameNum-1 < 0:
                 return False
