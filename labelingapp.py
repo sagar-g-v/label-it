@@ -18,7 +18,7 @@ import pandas as pd
 from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
                             QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
                             QCheckBox, QCompleter, QDockWidget, QHBoxLayout, QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
-                            QDialogButtonBox,)
+                            QDialogButtonBox,QProgressBar)
 from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QSettings, QSize, QPointF,QPoint,Signal,QTimer,Slot)
 from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath, QFontMetrics, QImage,
                         QCursor, QPainter,QIntValidator,QPalette)
@@ -516,7 +516,7 @@ class Canvas(QWidget):
         if not self.outOfPixmap(pos):
             self.setToolTip("Image")
             self.parent().window().labelCoordinates.setText(
-            'Resolution: (%d x %d); X: <b>%d</b>; Y: <b>%d</b> ' % (self.pixmap.width(), self.pixmap.height(), pos.x(), pos.y()))
+            'X: <b>%d</b>; Y: <b>%d</b> ' % (pos.x(), pos.y()))
         else:
             self.setToolTip("Canvas")
             self.parent().window().labelCoordinates.clear()
@@ -1347,9 +1347,8 @@ class MainWindow(QMainWindow):
         self.imagefiles = []
         self.dirPath = None
         self.frameNum = None
-        self.total_frames = None
-        self.Play_status = False
-        self._noSelectionSlot = False
+        self.totalframes = None
+#        self.Play_status = False
         self.filePath = None
         self.csvFilename = None
         self.csvdata = []
@@ -1515,12 +1514,24 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.actions.Quit)
         
         self.labelCoordinates = QLabel('')
+        self.progressbar = QProgressBar()
+        self.progressbar.setHidden(True)
+        self.progressbar.setMaximumSize(QSize(150, 16))
+        self.timer = QBasicTimer()
+        self.statusBar().addPermanentWidget(self.progressbar)
         self.statusBar().addPermanentWidget(self.labelCoordinates)
         self.statusBar().addPermanentWidget(self.zoomWidget.zoomlabel)
         self.statusBar().addPermanentWidget(self.zoomWidget)
         self.statusBar().addPermanentWidget(self.fitWindow_button)
         self.statusBar().addPermanentWidget(full_screen)
-        
+        self.setStyleSheet('''QProgressBar {
+                                border-radius: 8px;
+                                border: 2px solid grey;
+                                text-align: center;
+                                }
+                              QProgressBar::chunk {
+                                background-color: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 pink, stop:1 lightblue);
+                                }''')     
         self.zoomWidget.setEnabled(False)
         self.fitWindow_button.setEnabled(False)
         
@@ -1590,24 +1601,37 @@ class MainWindow(QMainWindow):
         if ext in compatible_file_formats:
             return True
         return False
-        
+    
+    def timerEvent(self, e):
+        if self.value >= 100:
+            self.timer.stop()
+            self.progressbar.setHidden(True)
+        self.progressbar.setValue(int(self.value))
+                
     def loadFile(self,Path):
         self.filePath = Path
         self.resetState()
         self.canvas.setEnabled(False)
         if self.isCompatible(Path,filetype = 'vid') and self.video is None:
             self.video = self.readVideo(Path)
+            self.videobuffer = []
             self.totalframes = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.timer.start(100,self)
+            self.progressbar.setHidden(False)
             while self.video.isOpened():
                 ret, frame = self.video.read()
+                self.value = (int(self.video.get(cv2.CAP_PROP_POS_FRAMES))/self.totalframes)*100
+                QCoreApplication.processEvents()
                 if ret is True:
                     self.videobuffer.append(frame)
                 else:
                     break
             self.video.release()
             cv2.destroyAllWindows()
+            self.video = None
             self.frameNum = 0
-            self.image = self.convertToPixmap(self.videobuffer[self.frameNum])
+            cvimage = self.videobuffer[self.frameNum]
+            self.image = self.convertToPixmap(cvimage)
             
         elif self.isCompatible(Path,filetype = 'img'):
             #image = self.convertToPixmap(read(FilePath, None))
