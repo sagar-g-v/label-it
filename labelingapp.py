@@ -25,9 +25,6 @@ from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPa
 from qtpy import QT_VERSION
 QT5 = QT_VERSION[0] == '5'
 
-# TODO(unknown):
-# - [opt] Store paths instead of creating new ones at each paint.
-
 DEFAULT_LINE_COLOR = QColor(0, 255, 0, 128)
 DEFAULT_FILL_COLOR = QColor(255, 0, 0, 50)
 DEFAULT_SELECT_LINE_COLOR = QColor(255, 255, 255)
@@ -241,20 +238,14 @@ class Shape(object):
     def nearestVertex(self, point, epsilon):
         min_distance = float('inf')
         min_i = None
-        for i, p in enumerate(self.points):
-            dist = distancetopoint(p, point)
-            if dist <= epsilon and dist < min_distance:
-                min_distance = dist
-                min_i = i
-        return min_i
-
-    def nearestVertexR(self, point, epsilon):
-        min_distance = float('inf')
-        min_i = None
-        rectanglePoints = [self.points[0],self.points[1],
+        if self.shape_type == 'rectangle':
+            points = [self.points[0],self.points[1],
                            QPoint(self.points[0].x(),self.points[1].y()),
                            QPoint(self.points[1].x(),self.points[0].y())]
-        for i, p in enumerate(rectanglePoints):
+        else:
+            points = self.points
+            
+        for i, p in enumerate(points):
             dist = distancetopoint(p, point)
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
@@ -264,30 +255,26 @@ class Shape(object):
     def nearestEdge(self, point, epsilon):
         min_distance = float('inf')
         post_i = None
-        for i in range(len(self.points)):
-            line = [self.points[i - 1], self.points[i]]
-            dist = distancetoline(point, line)
-            if dist <= epsilon and dist < min_distance:
-                min_distance = dist
-                post_i = i
-        return post_i
-
-    def nearestEdgeR(self, point, epsilon):
-        min_distance = float('inf')
-        post_i = None
         offset = 3.0
-        rectanglePoints = [self.points[0],self.points[1],
+        if self.shape_type == 'rectangle':
+            points = [self.points[0],self.points[1],
                            QPoint(self.points[0].x(),self.points[1].y()),
                            QPoint(self.points[1].x(),self.points[0].y())]
-        for i in range(len(rectanglePoints)):
-            if i == 0:
-                line = [rectanglePoints[0]+QPoint(offset,0.0), rectanglePoints[3]-QPoint(offset,0.0)]
-            elif i == 1:
-                line = [rectanglePoints[1]-QPoint(offset,0.0), rectanglePoints[2]+QPoint(offset,0.0)]
-            elif i == 2:
-                line = [rectanglePoints[2]-QPoint(0.0,offset), rectanglePoints[0]+QPoint(0.0,offset)]
+        else:
+            points = self.points
+            
+        for i in range(len(points)):
+            if self.shape_type == 'rectangle':
+                if i == 0:
+                    line = [points[0]+QPoint(offset,0.0), points[3]-QPoint(offset,0.0)]
+                elif i == 1:
+                    line = [points[1]-QPoint(offset,0.0), points[2]+QPoint(offset,0.0)]
+                elif i == 2:
+                    line = [points[2]-QPoint(0.0,offset), points[0]+QPoint(0.0,offset)]
+                else:
+                    line = [points[3]+QPoint(0.0,offset), points[1]-QPoint(0.0,offset)]     
             else:
-                line = [rectanglePoints[3]+QPoint(0.0,offset), rectanglePoints[1]-QPoint(0.0,offset)]  
+                line = [points[i - 1], points[i]]
                 
             dist = distancetoline(point, line)
             if dist <= epsilon and dist < min_distance:
@@ -603,8 +590,8 @@ class Canvas(QWidget):
             # check if we happen to be inside a shape.
             index, index_edge, rindex, rindex_edge = None, None, None, None 
             if shape.shape_type == 'rectangle':    
-                rindex = shape.nearestVertexR(pos, self.epsilon)
-                rindex_edge = shape.nearestEdgeR(pos, self.epsilon)
+                rindex = shape.nearestVertex(pos, self.epsilon)
+                rindex_edge = shape.nearestEdge(pos, self.epsilon)
 #                print(rindex_edge)
             else:
                 index = shape.nearestVertex(pos, self.epsilon)
@@ -959,7 +946,7 @@ class Canvas(QWidget):
 
         p = self._painter
         p.begin(self)
-        p.setRenderHint(QPainter.Antialiasing)
+#        p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.HighQualityAntialiasing)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
 
@@ -1001,7 +988,6 @@ class Canvas(QWidget):
             p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
             self.setPalette(pal)
             self.setEnabled(False)
-
         p.end()
 
     def transformPos(self, point):
@@ -1526,14 +1512,15 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(full_screen)
         self.setStyleSheet('''QProgressBar {
                                 border-radius: 8px;
-                                border: 2px solid grey;
+                                border: 2px solid lightgrey;
                                 text-align: center;
                                 }
                               QProgressBar::chunk {
                                 background-color: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 pink, stop:1 lightblue);
-                                }''')     
+                                }''')
         self.zoomWidget.setEnabled(False)
         self.fitWindow_button.setEnabled(False)
+        self.showMaximized()
         
     def closeFile(self):
         pass
@@ -1822,7 +1809,6 @@ class MainWindow(QMainWindow):
             
     def toggleFullscreen(self):
         if self.isFullScreen() is True:
-            self.showNormal()
             self.showMaximized()
         else:
             self.showFullScreen()
