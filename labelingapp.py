@@ -14,16 +14,21 @@ import hashlib
 import functools
 import numpy as np
 import pandas as pd
-
+from PIL import Image, ImageQt, ImageEnhance
 from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
                             QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
                             QCheckBox, QCompleter, QDockWidget, QHBoxLayout, QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
-                            QDialogButtonBox,QProgressBar)
+                            QDialogButtonBox,QProgressBar, QDialog)
 from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QSettings, QSize, QPointF,QPoint,Signal,QTimer,Slot)
 from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath, QFontMetrics, QImage,
                         QCursor, QPainter,QIntValidator,QPalette)
 from qtpy import QT_VERSION
 QT5 = QT_VERSION[0] == '5'
+
+__appname__ = 'mylabelingapp'
+__icondir = 'icons'
+__appIcon__ = os.path.join(__icondir,'appicon.png')
+
 
 DEFAULT_LINE_COLOR = QColor(0, 255, 0, 128)
 DEFAULT_FILL_COLOR = QColor(255, 0, 0, 50)
@@ -86,7 +91,7 @@ class Shape(object):
         if value is None:
             value = 'polygon'
         if value not in ['polygon', 'rectangle', 'point',
-           'line', 'circle', 'polyline']:
+           'line', 'circle', 'polyline', 'cube']:
             raise ValueError('Unexpected shape_type: {}'.format(value))
         self._shape_type = value
 
@@ -94,7 +99,7 @@ class Shape(object):
         self._closed = True
 
     def addPoint(self, point):
-        if self.points and point == self.points[0]:
+        if self.shape_type == 'polygon' and self.points and point == self.points[0]:
             self.close()
         else:
             self.points.append(point)
@@ -135,7 +140,23 @@ class Shape(object):
         x1, y1 = pt1.x(), pt1.y()
         x2, y2 = pt2.x(), pt2.y()
         return QRectF(x1, y1, x2 - x1, y2 - y1)
-
+    
+    def getCubeFromPoints(self, points):
+        cubePath = QPainterPath()
+        cubepoints = [points[0], points[1], QPoint(points[0].x(),points[1].y()), QPoint(points[1].x(),points[0].y()),
+                      points[2],points[3],QPoint(points[2].x(),points[3].y()), QPoint(points[3].x(),points[2].y())]
+        
+        frontRect = self.getRectFromLine(points[0],points[1])
+        backRect = self.getRectFromLine(points[2],points[3])
+        cubePath = QPainterPath()
+        
+        cubePath.addRect(frontRect)
+        cubePath.addRect(backRect)
+        for i in range(4):
+            cubePath.moveTo(cubepoints[i])
+            cubePath.lineTo(cubepoints[i+4])
+        return cubePath
+        
     def paint(self, painter):
         if self.points:
             color = self.select_line_color \
@@ -147,6 +168,7 @@ class Shape(object):
 
             line_path = QPainterPath()
             vrtx_path = QPainterPath()
+            
             if self.shape_type == 'rectangle':
                 assert len(self.points) in [1, 2]
                 if len(self.points) == 2:
@@ -157,6 +179,18 @@ class Shape(object):
                 else:
                     for i in range(len(self.points)):
                         self.drawVertex(vrtx_path, i)
+                        
+            elif self.shape_type == "cube":
+                assert len(self.points) in [1, 2, 3, 4]
+                if len(self.points) == 2:
+                    rectangle = self.getRectFromLine(*self.points)
+                    line_path.addRect(rectangle)
+                elif len(self.points) == 4:
+                    cube = self.getCubeFromPoints(self.points)
+                    line_path.addPath(cube)
+                for i in range(len(self.points)):
+                    self.drawVertex(vrtx_path, i)
+                    
             elif self.shape_type == "circle":
                 assert len(self.points) in [1, 2]
                 if len(self.points) == 2:
@@ -164,6 +198,7 @@ class Shape(object):
                     line_path.addEllipse(rectangle)
                 for i in range(len(self.points)):
                     self.drawVertex(vrtx_path, i)
+                    
             elif self.shape_type == "polyline":
                 line_path.moveTo(self.points[0])
                 for i, p in enumerate(self.points):
@@ -219,10 +254,6 @@ class Shape(object):
                 path.addPath(edgepath)       
             elif shape == self.P_WEDGE:
                 path.addPath(edgepath)
-            elif shape == self.P_SQUARE:
-                path.addRect(point.x() - d / 2.0, point.y() - d / 2.0, d, d)
-            elif shape == self.P_ROUND:
-                path.addEllipse(point, d / 2.0, d / 2.0)
             else:
                 assert False, "unsupported vertex shape"   
         else:
@@ -426,7 +457,7 @@ class Canvas(QWidget):
     @createMode.setter
     def createMode(self, value):
         if value not in ['polygon', 'rectangle', 'circle',
-           'line', 'point', 'polyline']:
+           'line', 'point', 'polyline', 'cube']:
             raise ValueError('Unsupported createMode: %s' % value)
         self._createMode = value
 
@@ -538,6 +569,15 @@ class Canvas(QWidget):
             elif self.createMode == 'rectangle':
                 self.line.points = [self.current[0], pos]
                 self.line.close()
+            elif self.createMode == 'cube':
+                if len(self.current.points) == 1:
+                    self.line.points = [self.current[0], pos]
+                    self.line.close()
+                elif len(self.current.points) < 4:
+                    size = self.current.points[1] - self.current.points[0]
+                    self.line.points = [QPoint(pos.x()-(size.x()/2),pos.y()-(size.y()/2)),\
+                                        QPoint(pos.x()+(size.x()/2),pos.y()+(size.y()/2))]
+                    self.line.close()
             elif self.createMode == 'circle':
                 self.line.points = [self.current[0], pos]
                 self.line.shape_type = "circle"
@@ -687,7 +727,7 @@ class Canvas(QWidget):
             if self.drawing():
                 if self.current:
                     # Add point to existing shape.
-                    if self.createMode == 'polygon':
+                    if self.createMode in ['polygon']:
                         self.current.addPoint(self.line[1])
                         self.line[0] = self.current[-1]
                         if self.current.isClosed():
@@ -701,6 +741,13 @@ class Canvas(QWidget):
                         self.line[0] = self.current[-1]
                         if int(ev.modifiers()) == Qt.ControlModifier:
                             self.finalise()
+                    elif self.createMode == 'cube':
+                        if len(self.current.points) == 1:
+                            self.current.points = self.line.points
+                        elif len(self.current.points) == 2:
+                            self.current.points[2:] = self.line.points
+                            self.finalise()
+                            
                 elif not self.outOfPixmap(pos):
                     # Create new shape.
                     self.drawingPolygon.emit(True)
@@ -1281,10 +1328,6 @@ class Canvas(QWidget):
         self.shapesBackups = []
         self.update()
 
-
-__appname__ = 'mylabelingapp'
-__appIcon__ = './icons/appicon.png'
-
 class MainWindow(QMainWindow):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
 
@@ -1307,6 +1350,8 @@ class MainWindow(QMainWindow):
         
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
         
+        self.imageditor = ImageEditor(parent=self)
+        
         scroll = QScrollArea()
         scroll.setWidget(self.canvas)
         scroll.setWidgetResizable(True)
@@ -1328,13 +1373,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(scroll)
         
         self.image = QImage()
+        self.cvimage = None
         self.video = None
         self.videobuffer = []
         self.imagefiles = []
         self.dirPath = None
         self.frameNum = None
         self.totalframes = None
-#        self.Play_status = False
         self.filePath = None
         self.csvFilename = None
         self.csvdata = []
@@ -1353,6 +1398,14 @@ class MainWindow(QMainWindow):
             'Ctrl+P',
             'polygon',
             'Start drawing polygons',
+            enabled=False,
+        )
+        createCubeMode = action(
+            'Cube',
+            lambda: self.toggleDrawMode(False, createMode='cube'),
+            'C',
+            'cube',
+            'Start drawing cube',
             enabled=False,
         )
         createRectangleMode = action(
@@ -1431,11 +1484,14 @@ class MainWindow(QMainWindow):
         
         undo = action("Undo", self.undoDeletetion,'Ctrl+Z', 'undo', 
                         "Undo",enabled=False)
+        imagedit = action("image setting", self.openImagEditor,None, 'image-setting', 
+                        "Edit",enabled=True)
         menu=(
             createRectangleMode,
             createPolyLineMode,
             createPolygonMode,
             createCircleMode,
+            createCubeMode,
             createLineMode,
             createPointMode,
             shapeLineColor,
@@ -1444,20 +1500,23 @@ class MainWindow(QMainWindow):
             delete,
             undo,
             addPoint,
+            imagedit,
         )
         onLoadActive=(
             Close,
             createPolygonMode,
             createRectangleMode,
             createCircleMode,
+            createCubeMode,
             createLineMode,
             createPointMode,
             createPolyLineMode,
             editMode,
+            imagedit,
         )
-        self.actions = struct(createPolygonMode=createPolygonMode,createCircleMode=createCircleMode,
-                              createRectangleMode=createRectangleMode,addPoint=addPoint,
-                              createLineMode=createLineMode, createPointMode=createPointMode,
+        self.actions = struct(createCubeMode=createCubeMode,createPolygonMode=createPolygonMode,
+                              createCircleMode=createCircleMode,createRectangleMode=createRectangleMode,
+                              addPoint=addPoint,createLineMode=createLineMode, createPointMode=createPointMode,
                               createPolyLineMode=createPolyLineMode,menu=menu,onLoadActive=onLoadActive,
                               shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,
                               Quit=Quit, editMode=editMode, delete=delete, Openfile=Openfile,
@@ -1497,6 +1556,7 @@ class MainWindow(QMainWindow):
         toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         toolbar.addAction(self.actions.Openfile)
         toolbar.addAction(self.actions.Openfolder)
+#        toolbar.addAction(imagedit)
         toolbar.addAction(self.actions.Quit)
         
         self.labelCoordinates = QLabel('')
@@ -1517,7 +1577,8 @@ class MainWindow(QMainWindow):
                                 }
                               QProgressBar::chunk {
                                 background-color: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 pink, stop:1 lightblue);
-                                }''')
+                                }
+                              ''')
         self.zoomWidget.setEnabled(False)
         self.fitWindow_button.setEnabled(False)
         self.showMaximized()
@@ -1544,15 +1605,20 @@ class MainWindow(QMainWindow):
             "Are you sure to Quit ?", QMessageBox.Yes | 
             QMessageBox.No, QMessageBox.No)
 
-        if self.reply == QMessageBox.Yes:               
+        if self.reply == QMessageBox.Yes:
+            self.imageditor.close()            
             event.accept()
         else:
             event.ignore()      
        
     def queueEvent(self, function):
         QTimer.singleShot(0, function)
-            
-    def convertToPixmap(self, imageData):
+        
+    def openImagEditor(self):
+        self.imageditor.show()
+        pass
+        
+    def convertToQImage(self, imageData):
         if type(imageData) == np.ndarray:
             image = np.copy(imageData)
             if len(image.shape) < 3 or image.shape[2] == 1:
@@ -1617,13 +1683,13 @@ class MainWindow(QMainWindow):
             cv2.destroyAllWindows()
             self.video = None
             self.frameNum = 0
-            cvimage = self.videobuffer[self.frameNum]
-            self.image = self.convertToPixmap(cvimage)
+            self.cvimage = self.videobuffer[self.frameNum]
+            self.image = self.convertToQImage(self.cvimage)
             
         elif self.isCompatible(Path,filetype = 'img'):
-            #image = self.convertToPixmap(read(FilePath, None))
-            image = self.convertToPixmap(cv2.imread(Path))
-            self.image = image
+            #image = self.convertToQImage(read(FilePath, None))
+            self.cvimage = cv2.imread(Path)
+            self.image = self.convertToQImage(self.cvimage)
         else:
             assert False,"unsupported image"
         self.loadPixmapToCanvas()
@@ -1650,7 +1716,8 @@ class MainWindow(QMainWindow):
         self.frameNum = 0
         
         if not self.totalframes == 0:
-            self.image = self.convertToPixmap(cv2.imread(self.imagefiles[self.frameNum]))
+            self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
+            self.image = self.convertToQImage(self.cvimage)
             
         self.loadPixmapToCanvas()
         self.toggleActions(True)
@@ -1661,33 +1728,32 @@ class MainWindow(QMainWindow):
         self.canvas.setEnabled(True)
         self.zoomWidget.setEnabled(True)
         self.fitWindow_button.setEnabled(True)
-        self.adjustScale()
-        self.paintCanvas()
+        self.canvas.update()
+        self.setScrollbarPos(self.previous_Scroll_pos[0],self.previous_Scroll_pos[1])
                 
     def loadNextframe(self):
         #print("next")
-        self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
+        self.getScrollbarPos()
         if not len(self.videobuffer) == 0 and (self.totalframes <= len(self.videobuffer)):
             if self.frameNum+1 >= len(self.videobuffer):
                 return False
             self.frameNum += 1
-            self.image = self.convertToPixmap(self.videobuffer[self.frameNum])
+            self.cvimage = self.videobuffer[self.frameNum]
+            self.image = self.convertToQImage(self.cvimage)
             self.loadPixmapToCanvas()
-            self.setScrollbarPos(self.previous_Scroll_pos[0],self.previous_Scroll_pos[1])
             return True
         return False
 
     def loadPreviousframe(self):
         #print("previous")
-        self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
+        self.getScrollbarPos()
         if not len(self.videobuffer) == 0 and (self.totalframes <= len(self.videobuffer)):
             if self.frameNum-1 < 0:
                 return False
             self.frameNum -= 1
-            self.image = self.convertToPixmap(self.videobuffer[self.frameNum])
+            self.cvimage = self.videobuffer[self.frameNum]
+            self.image = self.convertToQImage(self.cvimage)
             self.loadPixmapToCanvas()
-            self.scrollBars[Qt.Horizontal].setValue(self.previous_Scroll_pos[0])
-            self.scrollBars[Qt.Vertical].setValue(self.previous_Scroll_pos[1])
             return True
         return False
 
@@ -1702,6 +1768,7 @@ class MainWindow(QMainWindow):
         self.actions.createRectangleMode.setEnabled(not drawing)
         self.actions.createCircleMode.setEnabled(not drawing)
         self.actions.createLineMode.setEnabled(not drawing)
+        self.actions.createCubeMode.setEnabled(not drawing)
         self.actions.createPointMode.setEnabled(not drawing)
         self.actions.createPolyLineMode.setEnabled(not drawing)
         if not drawing:
@@ -1716,6 +1783,7 @@ class MainWindow(QMainWindow):
             self.actions.createCircleMode.setEnabled(True)
             self.actions.createLineMode.setEnabled(True)
             self.actions.createPointMode.setEnabled(True)
+            self.actions.createCubeMode.setEnabled(True)
             self.actions.createPolyLineMode.setEnabled(True)
         else:
             if createMode == 'polygon':
@@ -1724,6 +1792,7 @@ class MainWindow(QMainWindow):
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
+                self.actions.createCubeMode.setEnabled(True)
                 self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == 'rectangle':
                 self.actions.createPolygonMode.setEnabled(True)
@@ -1731,6 +1800,7 @@ class MainWindow(QMainWindow):
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
+                self.actions.createCubeMode.setEnabled(True)
                 self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == 'line':
                 self.actions.createPolygonMode.setEnabled(True)
@@ -1738,6 +1808,7 @@ class MainWindow(QMainWindow):
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(False)
                 self.actions.createPointMode.setEnabled(True)
+                self.actions.createCubeMode.setEnabled(True)
                 self.actions.createPolyLineMode.setEnabled(True)
             elif createMode == 'point':
                 self.actions.createPolygonMode.setEnabled(True)
@@ -1745,21 +1816,32 @@ class MainWindow(QMainWindow):
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(False)
+                self.actions.createCubeMode.setEnabled(True)
                 self.actions.createPolyLineMode.setEnabled(True)
-            elif createMode == "circle":
+            elif createMode == 'circle':
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(True)
                 self.actions.createCircleMode.setEnabled(False)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
+                self.actions.createCubeMode.setEnabled(True)
                 self.actions.createPolyLineMode.setEnabled(True)
-            elif createMode == "polyline":
+            elif createMode == 'polyline':
                 self.actions.createPolygonMode.setEnabled(True)
                 self.actions.createRectangleMode.setEnabled(True)
                 self.actions.createCircleMode.setEnabled(True)
                 self.actions.createLineMode.setEnabled(True)
                 self.actions.createPointMode.setEnabled(True)
+                self.actions.createCubeMode.setEnabled(True)
                 self.actions.createPolyLineMode.setEnabled(False)
+            elif createMode == 'cube':
+                self.actions.createPolygonMode.setEnabled(True)
+                self.actions.createRectangleMode.setEnabled(True)
+                self.actions.createCircleMode.setEnabled(True)
+                self.actions.createLineMode.setEnabled(True)
+                self.actions.createPointMode.setEnabled(True)
+                self.actions.createCubeMode.setEnabled(False)
+                self.actions.createPolyLineMode.setEnabled(True)
             else:
                 raise ValueError('Unsupported createMode: %s' % createMode)
         self.actions.editMode.setEnabled(not edit)
@@ -1779,26 +1861,6 @@ class MainWindow(QMainWindow):
             self.canvas.selectedShape.fill_color = color
             self.canvas.update()
 #            self.setDirty()
-            
-    def chooseColor1(self):
-        color = self.colorDialog.getColor(
-            self.lineColor, 'Choose line color', default=DEFAULT_LINE_COLOR)
-        if color:
-            self.lineColor = color
-            # Change the color for all shape lines:
-            Shape.line_color = self.lineColor
-            self.canvas.update()
-#            self.setDirty()
-
-    def chooseColor2(self):
-        color = self.colorDialog.getColor(
-            self.fillColor, 'Choose fill color', default=DEFAULT_FILL_COLOR)
-        if color:
-            self.fillColor = color
-            Shape.fill_color = self.fillColor
-            self.canvas.update()
-#            self.setDirty()
-
 
     def setEditMode(self):
         self.toggleDrawMode(True)
@@ -1866,12 +1928,6 @@ class MainWindow(QMainWindow):
         self.canvas.resetState()
         self.labelCoordinates.clear()
         
-    def resetModes(self):
-        self.canvas.setEditing(True)
-        self.actions.createMode.setEnabled(True)
-        self.actions.editMode.setEnabled(False)
-        self.actions.AiMode.setEnabled(True)
-        
     def resizeEvent(self, event):
         try:
             if self.canvas and not self.image.isNull()\
@@ -1917,6 +1973,10 @@ class MainWindow(QMainWindow):
     def setScrollbarPos(self,horizantal,vertical):
         self.scrollBars[Qt.Horizontal].setValue(horizantal)
         self.scrollBars[Qt.Vertical].setValue(vertical)
+
+    def getScrollbarPos(self):
+        self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
+        return self.previous_Scroll_pos
         
     def setZoom(self, value):
         self.zoomMode = self.MANUAL_ZOOM
@@ -1937,10 +1997,10 @@ class MainWindow(QMainWindow):
 
             x_shift = round(pos.x() * canvas_scale_factor) - pos.x()
             y_shift = round(pos.y() * canvas_scale_factor) - pos.y()
-            self.scrollBars[Qt.Horizontal].setValue(
-                self.scrollBars[Qt.Horizontal].value() + x_shift)
-            self.scrollBars[Qt.Vertical].setValue(
-                self.scrollBars[Qt.Vertical].value() + y_shift)
+            self.setScrollbarPos(self.scrollBars[Qt.Horizontal].value() + x_shift,
+                                 self.scrollBars[Qt.Vertical].value() + y_shift)
+            self.getScrollbarPos()
+            
 
     def setFitWindow(self, value=True):
 #        if value:
@@ -1973,8 +2033,81 @@ class ZoomWidget(QSpinBox):
         width = fm.width(str(self.maximum()))
         return QSize(width, height)
 
-class ColorDialog(QColorDialog):
+class ImageEditor(QDialog):
+    def __init__(self,parent=None):
+        super(ImageEditor, self).__init__(parent)
+        self.setFixedSize(QSize(300,150))
+        settingGroup = QGroupBox("Edit Image Settings")
+        brightnessLabel = QLabel('Brightness:')
+        brightness = QSlider(Qt.Horizontal)
+        brightness.setRange(0,200)
+        brightness.setValue(100)
+        brightness.setTickPosition(QSlider.TicksBelow)
+        brightness.setTickInterval(100)
+        brightness.valueChanged.connect(self.updateSettings)
+        
+        contrastLabel = QLabel('Contrast  :')
+        contrast = QSlider(Qt.Horizontal)
+        contrast.setRange(0,200)
+        contrast.setValue(100)
+        contrast.setTickPosition(QSlider.TicksBelow)
+        contrast.setTickInterval(100)
+        contrast.valueChanged.connect(self.updateSettings)
+        
 
+        sharpnessLabel = QLabel('Sharpness :')
+        sharpness = QSlider(Qt.Horizontal)
+        sharpness.setRange(0,200)
+        sharpness.setValue(100)
+        sharpness.setTickPosition(QSlider.TicksBelow)
+        sharpness.setTickInterval(100)
+        sharpness.valueChanged.connect(self.updateSettings)
+        
+        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness)
+        
+        restorebutton = newButton(self,'&Restore Defaults',self.restore,None, '',
+                           'restore',style=Qt.ToolButtonTextBesideIcon)
+        
+        settinglayout = QGridLayout()
+        settinglayout.addWidget(brightnessLabel,0,0)
+        settinglayout.addWidget(self.settings.brightness,0,1)        
+        settinglayout.addWidget(contrastLabel,1,0)
+        settinglayout.addWidget(self.settings.contrast,1,1)
+        settinglayout.addWidget(sharpnessLabel,2,0)
+        settinglayout.addWidget(self.settings.sharpness,2,1)
+        settingGroup.setLayout(settinglayout)
+        
+        layout = QVBoxLayout()
+        layout.addWidget(settingGroup)
+        layout.addWidget(restorebutton)
+        self.setLayout(layout)
+    
+    @Slot()
+    def updateSettings(self):
+        window = self.parent().window()
+        image = window.cvimage
+        if image is None:
+            return
+        brightnesvalue = self.settings.brightness.value()
+        contrastvalue = self.settings.contrast.value()
+        sharpnessvalue = self.settings.sharpness.value()
+        pilimage = Image.fromarray(image)
+        pilimage = ImageEnhance.Brightness(pilimage).enhance(brightnesvalue/100)
+        pilimage = ImageEnhance.Contrast(pilimage).enhance(contrastvalue/100)
+        pilimage = ImageEnhance.Sharpness(pilimage).enhance(sharpnessvalue/100)
+        shapes = window.canvas.shapes
+        window.image = ImageQt.ImageQt(pilimage)
+        window.loadPixmapToCanvas()
+        window.canvas.loadShapes(shapes)
+        pass
+    
+    def restore(self):
+        self.settings.brightness.setValue(100)
+        self.settings.contrast.setValue(100)
+        self.settings.sharpness.setValue(100)
+        pass
+
+class ColorDialog(QColorDialog):
     def __init__(self, parent=None):
         super(ColorDialog, self).__init__(parent)
         self.setOption(QColorDialog.ShowAlphaChannel)
@@ -2080,9 +2213,7 @@ def addActions(widget, actions):
             widget.addAction(action)
 
 def newIcon(icon):
-#    here = os.path.dirname(os.path.abspath(__file__))
-#    icons_dir = os.path.join(here, '../icons')
-    return QIcon(r'icons/%s.png' % icon)
+    return QIcon(os.path.join(__icondir,'%s.png' % icon))
 
 def distance(p):
     return math.sqrt(p.x() * p.x() + p.y() * p.y())
