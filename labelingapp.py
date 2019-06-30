@@ -9,6 +9,7 @@ import sys
 import cv2
 import copy
 import math
+import time
 import natsort
 import hashlib
 import functools
@@ -18,10 +19,11 @@ from PIL import Image, ImageQt, ImageEnhance
 from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
                             QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
                             QCheckBox, QCompleter, QDockWidget, QHBoxLayout, QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
-                            QDialogButtonBox,QProgressBar, QDialog)
-from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QSettings, QSize, QPointF,QPoint,Signal,QTimer,Slot)
+                            QDialogButtonBox,QProgressBar, QDialog, QToolBar, QDesktopWidget)
+from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QRect, QSettings, QSize, QPointF,QPoint,Signal,QTimer,
+                         Slot,)
 from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath, QFontMetrics, QImage,
-                        QCursor, QPainter,QIntValidator,QPalette)
+                        QCursor, QPainter,QIntValidator,QPalette, QFontDatabase)
 from qtpy import QT_VERSION
 QT5 = QT_VERSION[0] == '5'
 
@@ -415,6 +417,7 @@ class Canvas(QWidget):
         self.shapesBackups = []
         self.current = None
         self.selectedShape = None  # save the selected shape here
+        self.autoselect = -1
         self.selectedShapeCopy = None
         self.lineColor = QColor(0, 0, 255)
         # self.line represents:
@@ -747,7 +750,7 @@ class Canvas(QWidget):
                         elif len(self.current.points) == 2:
                             self.current.points[2:] = self.line.points
                             self.finalise()
-                            
+                
                 elif not self.outOfPixmap(pos):
                     # Create new shape.
                     self.drawingPolygon.emit(True)
@@ -989,8 +992,7 @@ class Canvas(QWidget):
 
     def paintEvent(self, event):
         if not self.pixmap:
-            return super(Canvas, self).paintEvent(event)
-
+            return super(Canvas, self).paintEvent(event)        
         p = self._painter
         p.begin(self)
 #        p.setRenderHint(QPainter.Antialiasing)
@@ -1021,12 +1023,13 @@ class Canvas(QWidget):
             drawing_shape.fill_color.setAlpha(64)
             drawing_shape.paint(p)
             
-#        self.setAutoFillBackground(True)
+        self.setAutoFillBackground(True)
         
         if not self.pixmap.isNull():
             pal = QPalette()
             pal.setColor(self.backgroundRole(), QColor(50, 50, 50, 255))
             self.setPalette(pal)
+            self.setEnabled(True)
         else:
             pal = QPalette()
             pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
@@ -1191,7 +1194,28 @@ class Canvas(QWidget):
             self.finalise()
         
         mods = ev.modifiers()
-        if Qt.ControlModifier == mods:
+        if Qt.ShiftModifier == mods:
+            #print("Shift pressed")
+            if key == Qt.Key_Right and self.shapes:
+                if self.selectedShape:
+                    self.autoselect = self.shapes.index(self.selectedShape)
+                self.deSelectShape()
+                self.autoselect += 1
+                if self.autoselect >= len(self.shapes):
+                    self.autoselect = -1
+                shape = self.shapes[self.autoselect] if not self.autoselect == -1 else self.shapes[0]
+                self.selectShape(shape)
+            elif key == Qt.Key_Left and self.shapes:
+                if self.selectedShape:
+                    self.autoselect = self.shapes.index(self.selectedShape)
+                self.deSelectShape()
+                self.autoselect -= 1
+                if self.autoselect < 0:
+                    self.autoselect = len(self.shapes)-1
+                shape = self.shapes[self.autoselect]
+                self.selectShape(shape)
+                
+        elif Qt.ControlModifier == mods:
             #print("Ctrl pressed")
             if key == Qt.Key_Left and self.selectedShape:
                 self.moveOnePixel('LeftEOut')
@@ -1334,11 +1358,10 @@ class MainWindow(QMainWindow):
     def __init__(self, defaultFilename=None, defaultPrefdefClassFile=None, defaultSaveDir=None):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
-        self.showNormal()
-        self.setGeometry(30 ,30 ,1300 ,695)
+#        self.showNormal()
+#        self.setGeometry(30 ,30 ,1300 ,695)
         self.setWindowIcon(QIcon(__appIcon__))
-        
-        self.zoomWidget = ZoomWidget()
+#        self.setWindowOpacity(0.3)
         self.colorDialog = ColorDialog(parent=self)
         
         self.canvas = Canvas(parent=self)
@@ -1347,7 +1370,9 @@ class MainWindow(QMainWindow):
         self.canvas.shapeMoved.connect(self.shapeMoved)
         self.canvas.selectionChanged.connect(self.shapeSelectionChanged)
         self.canvas.drawingPolygon.connect(self.toggleDrawingSensitive)
+        self.canvas.scrollRequest.connect(self.scrollRequest)
         
+        self.zoomWidget = ZoomWidget()
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
         
         self.imageditor = ImageEditor(parent=self)
@@ -1355,10 +1380,13 @@ class MainWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidget(self.canvas)
         scroll.setWidgetResizable(True)
+        
         self.scrollBars = {
             Qt.Vertical: scroll.verticalScrollBar(),
             Qt.Horizontal: scroll.horizontalScrollBar()
         }
+        self.scrollBars[Qt.Vertical].valueChanged.connect(self.updateScrollPos)
+        self.scrollBars[Qt.Horizontal].valueChanged.connect(self.updateScrollPos)
         
         self.zoomMode = self.MANUAL_ZOOM
         self.scalers = {
@@ -1368,9 +1396,6 @@ class MainWindow(QMainWindow):
             self.MANUAL_ZOOM: lambda: 1,
         }
         self.scrollArea = scroll
-        self.canvas.scrollRequest.connect(self.scrollRequest)
-        
-        self.setCentralWidget(scroll)
         
         self.image = QImage()
         self.cvimage = None
@@ -1381,111 +1406,86 @@ class MainWindow(QMainWindow):
         self.frameNum = None
         self.totalframes = None
         self.filePath = None
-        self.csvFilename = None
-        self.csvdata = []
-        self.shouldItrack = True
-        self.canclose = True
         self.lineColor = None
         self.fillColor = None
-        self.opened = not self.canclose
-        self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
+        self.play_status = False
+        self.previous_Scroll_pos = None
         
         action = functools.partial(newAction,self)
         
-        createPolygonMode = action(
-            'Polygons',
-            lambda: self.toggleDrawMode(False, createMode='polygon'),
-            'Ctrl+P',
-            'polygon',
-            'Start drawing polygons',
-            enabled=False,
-        )
-        createCubeMode = action(
-            'Cube',
-            lambda: self.toggleDrawMode(False, createMode='cube'),
-            'C',
-            'cube',
-            'Start drawing cube',
-            enabled=False,
-        )
-        createRectangleMode = action(
-            'Rectangle',
-            lambda: self.toggleDrawMode(False, createMode='rectangle'),
-            'Ctrl+R',
-            'rectangle',
-            'Start drawing rectangles',
-            enabled=False,
-        )
-        createCircleMode = action(
-            'Circle',
-            lambda: self.toggleDrawMode(False, createMode='circle'),
-            'Ctrl+C',
-            'circle',
-            'Start drawing circles',
-            enabled=False,
-        )
-        createLineMode = action(
-            'Line',
-            lambda: self.toggleDrawMode(False, createMode='line'),
-            'L',
-            'line',
-            'Start drawing lines',
-            enabled=False,
-        )
-        createPointMode = action(
-            'Point',
-            lambda: self.toggleDrawMode(False, createMode='point'),
-            'P',
-            'dot',
-            'Start drawing points',
-            enabled=False,
-        )
-        createPolyLineMode = action(
-            'PolyLine',
-            lambda: self.toggleDrawMode(False, createMode='polyline'),
-            'Ctrl+L',
-            'polyline',
-            'Start drawing polyline. Ctrl+LeftClick ends creation.',
-            enabled=False,
-        )
+        createPolygonMode = action('Polygons', lambda: self.toggleDrawMode(False, createMode='polygon'),
+            'Ctrl+P', 'polygon', 'Start drawing polygons', enabled=False,)
+        
+        createCubeMode = action('Cube', lambda: self.toggleDrawMode(False, createMode='cube'),
+            'C', 'cube', 'Start drawing cube', enabled=False,)
+        
+        createRectangleMode = action('Rectangle', lambda: self.toggleDrawMode(False, createMode='rectangle'),
+            'Ctrl+R', 'rectangle', 'Start drawing rectangles', enabled=False,)
+        
+        createCircleMode = action('Circle', lambda: self.toggleDrawMode(False, createMode='circle'),
+            'Ctrl+C', 'circle', 'Start drawing circles', enabled=False,)
+        
+        createLineMode = action('Line', lambda: self.toggleDrawMode(False, createMode='line'),
+            'L', 'line', 'Start drawing lines', enabled=False,)
+        
+        createPointMode = action('Point', lambda: self.toggleDrawMode(False, createMode='point'),
+            'P', 'dot', 'Start drawing points', enabled=False,)
+        
+        createPolyLineMode = action('PolyLine', lambda: self.toggleDrawMode(False, createMode='polyline'),
+            'Ctrl+L', 'polyline', 'Start drawing polyline. Ctrl+LeftClick ends creation.', enabled=False,)
+        
         addPoint = action('Add Point to Edge', self.canvas.addPointToEdge,
-                          None, 'edit', 'Add point to the nearest edge',
-                          enabled=False)
+             None, 'edit', 'Add point to the nearest edge', enabled=False)
         
-        editMode = action('Edit', self.setEditMode,'Ctrl+E', 'edit',
-                  'Move and Edit',enabled=False,)
+        editMode = action('Edit', self.setEditMode,
+            'Ctrl+E', 'edit', 'Move and Edit', enabled=False,)
 
-        shapeLineColor = action(
-            '&Line Color', self.chshapeLineColor, icon='pen-color',
-            tip='Change the line color for this specific shape', enabled=False)
-        shapeFillColor = action(
-            '&Fill Color', self.chshapeFillColor, icon='fill-color',
-            tip='Change the fill color for this specific shape', enabled=False)
+        shapeLineColor = action('Line Color', self.chshapeLineColor,
+            icon='pen-color', tip='Change the line color for this specific shape', enabled=False)
         
-        Quit = action('Quit', self.close, 'Ctrl+Q', 'quit',
-                      'Quit application')
-        Openfolder  = action(
-                'Open Folder',
-                lambda: self.openFile(filetype='folder'), 
-                'Ctrl+Shift+O', 'open-folder',
-                'Open Folder'
-                )
-        Openfile  = action(
-                'Open File', 
-                lambda: self.openFile(filetype='file'), 
-                'Ctrl+O', 'open-files',
-                'Open File'
-                )
-        Close  = action('Close File', self.closeFile, 'Ctrl+Shift+W', 'close',
-                      'Close File',enabled=False)
+        shapeFillColor = action('Fill Color', self.chshapeFillColor, 
+            icon='fill-color', tip='Change the fill color for this specific shape', enabled=False)
         
-        delete = action("Delete", self.deleteSelectedShape,'Delete', 'delete', 
-                        "Delete selected Shape",enabled=False)
+        Quit = action('Quit', self.close, 
+            'Ctrl+Q', 'quit', 'Quit application')
         
-        undo = action("Undo", self.undoDeletetion,'Ctrl+Z', 'undo', 
-                        "Undo",enabled=False)
-        imagedit = action("image setting", self.openImagEditor,None, 'image-setting', 
-                        "Edit",enabled=True)
+        Openfolder  = action('Open Folder', lambda: self.openFile(filetype='folder'), 
+            'Ctrl+Shift+O', 'open-folder', 'Open Folder')
+        
+        Openfile  = action('Open File', lambda: self.openFile(filetype='file'), 
+            'Ctrl+O', 'open-files', 'Open File')
+        
+        Close  = action('Close File', self.closeFile,
+            'Ctrl+Shift+W', 'close', 'Close File', enabled=False)
+        
+        delete = action('Delete', self.deleteSelectedShape,
+            'Delete', 'delete', 'Delete selected Shape', enabled=False)
+        
+        undo = action('Undo', self.undoDeletetion,
+            'Ctrl+Z', 'undo', 'Undo', enabled=False)
+        
+        imagedit = action('image setting', self.openImagEditor,
+            icon='image-setting', tip='Edit image', enabled=False)
+        
+        button = functools.partial(newButton,self)
+        fitWindow_button = button('&Fit-To-Canvas', self.setFitWindow,'Tab', 'expand',
+                           'Fit to canvas size',style=Qt.ToolButtonTextBesideIcon, checkable=True, enabled=False)
+        
+        play_button = button('&Play', self.Play,'Space', 'play',
+                           'Start playing video',stylesheet="border-radius: 4px;",IconSize=QSize(35,35))
+        
+        previous_button = button('&Previous', self.loadPreviousframe,'A', 'previous',
+                           'Go to previous frame',stylesheet="border-radius: 4px;", IconSize=QSize(25,25))
+
+        next_button = button('&Next', self.loadNextframe,'D', 'next',
+                           'Go to next frame',stylesheet="border-radius: 4px;",IconSize=QSize(25,25))
+
+        usePrevious_botton = button('&Use Previous', self.loadPreviousFrameShapes,'I', 'use-previous',
+                           'Use previous frame shapes',stylesheet="border-radius: 4px;", IconSize=QSize(25,25))
+                
+        full_screen = button('&Go full screen', self.toggleFullscreen,'Ctrl+Tab' ,'full-screen',
+                             'Go full screen',)
+
         menu=(
             createRectangleMode,
             createPolyLineMode,
@@ -1512,7 +1512,7 @@ class MainWindow(QMainWindow):
             createPointMode,
             createPolyLineMode,
             editMode,
-            imagedit,
+            imagedit,  
         )
         self.actions = struct(createCubeMode=createCubeMode,createPolygonMode=createPolygonMode,
                               createCircleMode=createCircleMode,createRectangleMode=createRectangleMode,
@@ -1522,65 +1522,119 @@ class MainWindow(QMainWindow):
                               Quit=Quit, editMode=editMode, delete=delete, Openfile=Openfile,
                               Openfolder=Openfolder,undo=undo, Close=Close)
         
+        self.buttons = struct(fitWindow_button=fitWindow_button,play_button=play_button,
+                              previous_button=previous_button,next_button=next_button,
+                              usePrevious_botton=usePrevious_botton,full_screen=full_screen)
+        
         addActions(self.canvas.menus[0], self.actions.menu)
         addActions(self.canvas, self.actions.menu)
         self.canvas.edgeSelected.connect(self.actions.addPoint.setEnabled)
         
-        button = functools.partial(newButton,self)
-        self.fitWindow_button = button('&Fit-To-Canvas', self.setFitWindow,'Tab', 'expand',
-                           'Fit to canvas size',style=Qt.ToolButtonTextBesideIcon,checkable=True,)
+        self.frameinfo = QLabel('<b>0</b> / 0')
+        self.videoslider = QSlider(Qt.Horizontal)
+        self.videoslider.setValue(0)
+        self.videoslider.setTickPosition(QSlider.TicksBelow)
+        self.videoslider.setTickInterval(1)
+        self.videoslider.valueChanged.connect(self.loadFrame)
+        self.videoslider.setHidden(True)
+        self.videoslider.setStyleSheet('''
+                                      QSlider::groove:horizontal {
+                                       border: 1px solid lightgray;
+                                       height: 3px; 
+                                       background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 mediumslateblue, stop:1 cornflowerblue);
+                                       border-radius: 3px;}
+                                     QSlider::handle:horizontal {
+                                       background: white;
+                                       border: 1px solid lightgray;
+                                       width: 8px;
+                                       height: 8px;
+                                       margin: -8px 0;
+                                       border-radius: 4px;}
+                                     QSlider::handle:horizontal:pressed {
+                                      background-color: lightgray;}
+                                     QSlider::sub-page:horizontal {
+                                        background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:1 magenta, stop:0 lightpink);
+                                        height: 3px;
+                                        margin: 1px 0;
+                                        border-radius: 3px;}
+                                       ''')
+        self.controls = QHBoxLayout()
+        self.controls.setContentsMargins(0,0,5,0)
+        self.controls.setAlignment(Qt.AlignLeft)
+        self.controls.addWidget(self.buttons.previous_button)
+        self.controls.addWidget(self.buttons.play_button)
+        self.controls.addWidget(self.buttons.next_button)
+        self.controls.addWidget(self.buttons.usePrevious_botton)
+        self.controls.addWidget(self.videoslider)
         
-        self.play_button = button('&Play', self.togglePlayMode,'Space', 'play',
-                           'Start playing video',stylesheet="border-radius: 4px;",IconSize=QSize(65,65))
-        
-        self.previous_button = button('&Previous', self.loadPreviousframe,'A', 'previous',
-                           'Go to previous frame',stylesheet="border-radius: 4px;", IconSize=QSize(45,45))
-        
-        self.next_button = button('&Next', self.loadNextframe,'D', 'next',
-                           'Go to next frame',stylesheet="border-radius: 4px;",IconSize=QSize(45,45))
-        
-        self.usePrevious_botton = button('&Use Previous', self.loadPreviousFrameShapes,'I', 'use-previous',
-                           'Use previous frame shapes',style=Qt.ToolButtonTextBesideIcon)
-                
-        full_screen = button('&Go full screen', self.toggleFullscreen,'Ctrl+Tab' ,'full-screen',
-                             'Go full screen',)
-
         menubar = self.menuBar()
+        menubar.setMaximumHeight(20)
         fileMenu = menubar.addMenu('&File')
-        fileMenu.addAction(self.actions.Openfile)
-        fileMenu.addAction(self.actions.Openfolder)
-        fileMenu.addAction(self.actions.Close)
-        helpmenu = menubar.addMenu('&Help')
+        addActions(fileMenu, [self.actions.Openfile, self.actions.Openfolder, self.actions.Close])
         
-        toolbar = self.addToolBar('Quick Access')
-        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        helpmenu = menubar.addMenu('&Help')
+      
+        toolbar = QToolBar('Quick Access')
+        toolbar.setMaximumHeight(28)
+        toolbar.setFloatable(True)
+        toolbar.setMovable(False)
+#        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         toolbar.addAction(self.actions.Openfile)
         toolbar.addAction(self.actions.Openfolder)
-#        toolbar.addAction(imagedit)
         toolbar.addAction(self.actions.Quit)
+        self.addToolBar(toolbar)
         
         self.labelCoordinates = QLabel('')
         self.progressbar = QProgressBar()
         self.progressbar.setHidden(True)
         self.progressbar.setMaximumSize(QSize(150, 16))
         self.timer = QBasicTimer()
+        
         self.statusBar().addPermanentWidget(self.progressbar)
         self.statusBar().addPermanentWidget(self.labelCoordinates)
-        self.statusBar().addPermanentWidget(self.zoomWidget.zoomlabel)
+        self.statusBar().addPermanentWidget(QLabel('Frame No'))
+        self.statusBar().addPermanentWidget(self.frameinfo)
+        self.statusBar().addPermanentWidget(QLabel('<b>Zoom</b>'))
         self.statusBar().addPermanentWidget(self.zoomWidget)
-        self.statusBar().addPermanentWidget(self.fitWindow_button)
-        self.statusBar().addPermanentWidget(full_screen)
+        self.statusBar().addPermanentWidget(self.buttons.fitWindow_button)
+        self.statusBar().addPermanentWidget(self.buttons.full_screen)
+        self.statusBar().setMaximumHeight(25)
         self.setStyleSheet('''QProgressBar {
-                                border-radius: 8px;
+                                border-radius: 5px;
                                 border: 2px solid lightgrey;
                                 text-align: center;
+                                margin: 1px 0;
                                 }
                               QProgressBar::chunk {
-                                background-color: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 pink, stop:1 lightblue);
+                                background: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 hotpink, stop:1 cornflowerblue);
+                                }
+                              QStatusBar {
+                                background-color: white;
+                                color: black;
                                 }
                               ''')
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0,0,0,0)
+        layout.addWidget(self.scrollArea)
+        layout.addLayout(self.controls)
+        
+        window = QWidget()
+        window.setLayout(layout)
+        self.setCentralWidget(window)
+        
         self.zoomWidget.setEnabled(False)
-        self.fitWindow_button.setEnabled(False)
+        self.windowfade('in')
+
+    def windowfade(self,effect = 'in'):
+        if effect == 'in':
+            along = range(1,201)
+            maxval = 200
+        for i in along:
+            self.setWindowOpacity(i/maxval)
+            self.showMaximized()
+            QApplication.processEvents()
+            time.sleep(1/10000)
+        self.setWindowOpacity(1)
         self.showMaximized()
         
     def closeFile(self):
@@ -1602,14 +1656,13 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.reply = QMessageBox.question(self, 'Confirm Exit',
-            "Are you sure to Quit ?", QMessageBox.Yes | 
-            QMessageBox.No, QMessageBox.No)
+            "Are you sure to Quit ?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
         if self.reply == QMessageBox.Yes:
-            self.imageditor.close()            
+            self.imageditor.close()
             event.accept()
         else:
-            event.ignore()      
+            event.ignore()
        
     def queueEvent(self, function):
         QTimer.singleShot(0, function)
@@ -1640,7 +1693,7 @@ class MainWindow(QMainWindow):
         return cv2.VideoCapture(FilePath)
     
     def loadPreviousFrameShapes(self):
-        print("use previous doesnot working")
+        print("use previous doesnot work")
     
     def isCompatible(self,file,filetype='img'):
         if filetype == 'img':
@@ -1654,7 +1707,12 @@ class MainWindow(QMainWindow):
         if ext in compatible_file_formats:
             return True
         return False
-    
+
+    def keyPressEvent(self, ev):
+        key = ev.key()
+        mods = ev.modifiers()
+        
+        
     def timerEvent(self, e):
         if self.value >= 100:
             self.timer.stop()
@@ -1668,6 +1726,7 @@ class MainWindow(QMainWindow):
         if self.isCompatible(Path,filetype = 'vid') and self.video is None:
             self.video = self.readVideo(Path)
             self.videobuffer = []
+            self.imagefiles = []
             self.totalframes = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
             self.timer.start(100,self)
             self.progressbar.setHidden(False)
@@ -1683,6 +1742,10 @@ class MainWindow(QMainWindow):
             cv2.destroyAllWindows()
             self.video = None
             self.frameNum = 0
+            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+            self.videoslider.setHidden(False)
+            self.videoslider.setRange(self.frameNum,self.totalframes-1)
+            self.videoslider.setValue(self.frameNum)
             self.cvimage = self.videobuffer[self.frameNum]
             self.image = self.convertToQImage(self.cvimage)
             
@@ -1690,11 +1753,12 @@ class MainWindow(QMainWindow):
             #image = self.convertToQImage(read(FilePath, None))
             self.cvimage = cv2.imread(Path)
             self.image = self.convertToQImage(self.cvimage)
+            self.videoslider.setHidden(True)
         else:
             assert False,"unsupported image"
         self.loadPixmapToCanvas()
-        self.toggleActions(True)
-        
+        self.paintCanvas()
+       
     def loadDirImages(self, dirpath, pattern=None, load=True):
         files = os.listdir(dirpath)
         self.dirPath = dirpath
@@ -1706,7 +1770,8 @@ class MainWindow(QMainWindow):
                 
         files_sortkeys = natsort.natsort_keygen(alg = natsort.ns.INT)
         filteredfiles.sort(key = files_sortkeys)
-        
+        self.imagefiles = []
+        self.videobuffer = []
         for file in filteredfiles:
             imagepath = os.path.abspath(os.path.join(dirpath,file))
             if os.path.isfile(imagepath):
@@ -1714,46 +1779,69 @@ class MainWindow(QMainWindow):
                 
         self.totalframes = len(self.imagefiles)
         self.frameNum = 0
-        
+        self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+        self.videoslider.setHidden(False)
+        self.videoslider.setRange(self.frameNum,self.totalframes-1)
+        self.videoslider.setValue(self.frameNum)
         if not self.totalframes == 0:
             self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
             self.image = self.convertToQImage(self.cvimage)
             
         self.loadPixmapToCanvas()
-        self.toggleActions(True)
+        self.paintCanvas()
         
     def loadPixmapToCanvas(self):
-        self.canvas.setEnabled(False)
         self.canvas.loadPixmap(QPixmap.fromImage(self.image))
-        self.canvas.setEnabled(True)
-        self.zoomWidget.setEnabled(True)
-        self.fitWindow_button.setEnabled(True)
-        self.canvas.update()
-        self.setScrollbarPos(self.previous_Scroll_pos[0],self.previous_Scroll_pos[1])
-                
-    def loadNextframe(self):
-        #print("next")
-        self.getScrollbarPos()
-        if not len(self.videobuffer) == 0 and (self.totalframes <= len(self.videobuffer)):
-            if self.frameNum+1 >= len(self.videobuffer):
-                return False
-            self.frameNum += 1
+        if not self.image.isNull():
+            self.toggleActions(True)
+        else:   
+            self.toggleActions(False)
+
+    def loadFrame(self):
+        if self.play_status is True:
+            return
+        self.frameNum = self.videoslider.value()
+        self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+        if self.videobuffer:
             self.cvimage = self.videobuffer[self.frameNum]
+        elif self.imagefiles:
+            self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
+        self.image = self.convertToQImage(self.cvimage)
+        self.loadPixmapToCanvas()
+            
+    def loadNextframe(self):
+        #print("next")  
+        canload = (self.videobuffer or self.imagefiles) and (self.frameNum+1 < self.totalframes)
+        if canload:
+            self.frameNum += 1
+            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+            self.videoslider.setValue(self.frameNum)
+            if self.videobuffer:
+                self.cvimage = self.videobuffer[self.frameNum]
+            elif self.imagefiles:
+                self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
             self.image = self.convertToQImage(self.cvimage)
             self.loadPixmapToCanvas()
+            if self.imageditor.isVisible():
+                self.imageditor.updateSettings()
             return True
         return False
 
     def loadPreviousframe(self):
         #print("previous")
-        self.getScrollbarPos()
-        if not len(self.videobuffer) == 0 and (self.totalframes <= len(self.videobuffer)):
-            if self.frameNum-1 < 0:
-                return False
+        canload = (self.videobuffer or self.imagefiles) and (self.frameNum-1 >= 0)
+        if canload:
             self.frameNum -= 1
-            self.cvimage = self.videobuffer[self.frameNum]
+            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+            self.videoslider.setValue(self.frameNum)
+            if self.videobuffer:
+                self.cvimage = self.videobuffer[self.frameNum]
+            elif self.imagefiles:
+                self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
             self.image = self.convertToQImage(self.cvimage)
             self.loadPixmapToCanvas()
+            if self.imageditor.isVisible():
+                self.imageditor.updateSettings()
             return True
         return False
 
@@ -1865,9 +1953,56 @@ class MainWindow(QMainWindow):
     def setEditMode(self):
         self.toggleDrawMode(True)
 
-    def togglePlayMode(self):
-        if self.video.isOpened():
-            self.Play_status = not self.Play_status
+    def Play(self):
+        canload = (self.videobuffer or self.imagefiles) and not self.play_status
+        if canload:
+            self.play_status = True
+            self.buttons.play_button.setIcon(newIcon('pause'))
+            self.videoslider.setEnabled(False)
+            self.buttons.previous_button.setEnabled(False)
+            self.buttons.next_button.setEnabled(False)
+            self.buttons.usePrevious_botton.setEnabled(False)
+            if self.videobuffer: 
+                source = self.videobuffer[self.frameNum:]
+            elif self.imagefiles:
+                source = self.imagefiles[self.frameNum:]
+            transfertobuffer = self.frameNum == 0
+            for frame in source:
+                self.cvimage = frame
+                if type(frame) is str:
+                    self.cvimage = cv2.imread(frame)
+                    if transfertobuffer is True:
+                        self.videobuffer.append(self.cvimage)                        
+                self.image = self.convertToQImage(self.cvimage)
+                self.loadPixmapToCanvas()
+                if self.imageditor.isVisible():
+                    self.imageditor.updateSettings()
+                QCoreApplication.processEvents()
+                if self.play_status is False:
+                    self.videoslider.setEnabled(True)
+                    self.buttons.previous_button.setEnabled(True)
+                    self.buttons.next_button.setEnabled(True)
+                    self.buttons.usePrevious_botton.setEnabled(True)
+                    if self.imagefiles:
+                        self.videobuffer = []
+                    return
+                self.frameNum += 1
+                self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+                self.videoslider.setValue(self.frameNum)
+            self.frameNum = 0
+            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+            self.videoslider.setValue(self.frameNum)
+            self.videoslider.setEnabled(True)
+            self.buttons.previous_button.setEnabled(True)
+            self.buttons.next_button.setEnabled(True)
+            self.buttons.usePrevious_botton.setEnabled(True)
+            self.play_status = False
+            self.buttons.play_button.setIcon(newIcon('play'))
+            if self.imagefiles and len(self.imagefiles) == len(self.videobuffer):
+                self.imagefiles = []
+        else:
+            self.play_status = False
+            self.buttons.play_button.setIcon(newIcon('play'))
             
     def toggleFullscreen(self):
         if self.isFullScreen() is True:
@@ -1877,30 +2012,17 @@ class MainWindow(QMainWindow):
 
     def toggleActions(self, value=True):
         """Enable/Disable widgets which depend on an opened image."""
-#        for z in self.actions.zoomActions:
-#            z.setEnabled(value)
+        self.zoomWidget.setEnabled(value)
+        self.buttons.fitWindow_button.setEnabled(value)
         for action in self.actions.onLoadActive:
             action.setEnabled(value)
-
-    def editShapeProperty(self):
-#        print("property")
-        pass
     
     # React to canvas signals.
     @Slot(bool)
     def shapeSelectionChanged(self, selected=False):
         self.actions.delete.setEnabled(selected)
-#        self.actions.copy.setEnabled(selected)
-#        self.actions.edit.setEnabled(selected)
         self.actions.shapeLineColor.setEnabled(selected)
-        self.actions.shapeFillColor.setEnabled(selected)
-        
-    def ShapePropertyChanged(self):
-#        print("shape property changed")
-        pass
-
-    def currentItem(self):
-        pass    
+        self.actions.shapeFillColor.setEnabled(selected)   
     
     @Slot()
     def newShape(self):
@@ -1938,7 +2060,6 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).resizeEvent(event)
 
     def paintCanvas(self):
-#        assert not self.image.isNull(), "cannot paint null image"
         if not self.image.isNull():
             self.canvas.scale = 0.01 * self.zoomWidget.value()
             self.canvas.adjustSize()
@@ -1951,8 +2072,8 @@ class MainWindow(QMainWindow):
     def scaleFitWindow(self):
         """Figure out the size of the pixmap in order to fit the main widget."""
         e = 2.0  # So that no scrollbars are generated.
-        w1 = self.centralWidget().width() - e
-        h1 = self.centralWidget().height() - e
+        w1 = self.scrollArea.width() - e
+        h1 = self.scrollArea.height() - e
         a1 = w1 / h1
         # Calculate a new scale value based on the pixmap's aspect ratio.
         w2 = self.canvas.pixmap.width()
@@ -1962,7 +2083,7 @@ class MainWindow(QMainWindow):
 
     def scaleFitWidth(self):
         # The epsilon does not seem to work too well here.
-        w = self.centralWidget().width() - 2.0
+        w = self.scrollArea.width() - 2.0
         return w / self.canvas.pixmap.width()
     
     def scrollRequest(self, delta, orientation):
@@ -1970,13 +2091,12 @@ class MainWindow(QMainWindow):
         bar = self.scrollBars[orientation]
         bar.setValue(bar.value() + bar.singleStep() * units)
 
-    def setScrollbarPos(self,horizantal,vertical):
-        self.scrollBars[Qt.Horizontal].setValue(horizantal)
-        self.scrollBars[Qt.Vertical].setValue(vertical)
-
-    def getScrollbarPos(self):
+    def updateScrollPos(self):
         self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
-        return self.previous_Scroll_pos
+        
+    def setScrollbarPos(self):
+        self.scrollBars[Qt.Horizontal].setValue(self.previous_Scroll_pos[0])
+        self.scrollBars[Qt.Vertical].setValue(self.previous_Scroll_pos[1])
         
     def setZoom(self, value):
         self.zoomMode = self.MANUAL_ZOOM
@@ -1997,20 +2117,14 @@ class MainWindow(QMainWindow):
 
             x_shift = round(pos.x() * canvas_scale_factor) - pos.x()
             y_shift = round(pos.y() * canvas_scale_factor) - pos.y()
-            self.setScrollbarPos(self.scrollBars[Qt.Horizontal].value() + x_shift,
-                                 self.scrollBars[Qt.Vertical].value() + y_shift)
-            self.getScrollbarPos()
+            self.scrollBars[Qt.Horizontal].setValue(self.scrollBars[Qt.Horizontal].value() + x_shift)
+            self.scrollBars[Qt.Vertical].setValue(self.scrollBars[Qt.Vertical].value() + y_shift)
             
-
     def setFitWindow(self, value=True):
-#        if value:
-#            self.actions.fitWidth.setChecked(False)
         self.zoomMode = self.FIT_WINDOW if value else self.MANUAL_ZOOM
         self.adjustScale()
 
     def setFitWidth(self, value=True):
-#        if value:
-#            self.actions.fitWindow.setChecked(False)
         self.zoomMode = self.FIT_WIDTH if value else self.MANUAL_ZOOM
         self.adjustScale()
 
@@ -2018,7 +2132,6 @@ class ZoomWidget(QSpinBox):
     def __init__(self, value=100):
         super(ZoomWidget, self).__init__()
 #        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        self.zoomlabel = QLabel('<b>Zoom:<\b> ')
         self.setRange(1, 500)
         self.setSingleStep(20)
         self.setSuffix(' %')
@@ -2032,13 +2145,14 @@ class ZoomWidget(QSpinBox):
         fm = QFontMetrics(self.font())
         width = fm.width(str(self.maximum()))
         return QSize(width, height)
-
+        
 class ImageEditor(QDialog):
     def __init__(self,parent=None):
         super(ImageEditor, self).__init__(parent)
-        self.setFixedSize(QSize(300,150))
+        self.setFixedSize(QSize(300,180))
+        self.setWindowTitle("Image Editor")
         settingGroup = QGroupBox("Edit Image Settings")
-        brightnessLabel = QLabel('Brightness:')
+        brightnessLabel = QLabel("Brightness :")
         brightness = QSlider(Qt.Horizontal)
         brightness.setRange(0,200)
         brightness.setValue(100)
@@ -2046,7 +2160,7 @@ class ImageEditor(QDialog):
         brightness.setTickInterval(100)
         brightness.valueChanged.connect(self.updateSettings)
         
-        contrastLabel = QLabel('Contrast  :')
+        contrastLabel = QLabel("Contrast :")
         contrast = QSlider(Qt.Horizontal)
         contrast.setRange(0,200)
         contrast.setValue(100)
@@ -2054,8 +2168,7 @@ class ImageEditor(QDialog):
         contrast.setTickInterval(100)
         contrast.valueChanged.connect(self.updateSettings)
         
-
-        sharpnessLabel = QLabel('Sharpness :')
+        sharpnessLabel = QLabel("Sharpness :")
         sharpness = QSlider(Qt.Horizontal)
         sharpness.setRange(0,200)
         sharpness.setValue(100)
@@ -2063,7 +2176,15 @@ class ImageEditor(QDialog):
         sharpness.setTickInterval(100)
         sharpness.valueChanged.connect(self.updateSettings)
         
-        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness)
+        colorLabel = QLabel("Color :")
+        color = QSlider(Qt.Horizontal)
+        color.setRange(0,200)
+        color.setValue(100)
+        color.setTickPosition(QSlider.TicksBelow)
+        color.setTickInterval(100)
+        color.valueChanged.connect(self.updateSettings)
+        
+        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color)
         
         restorebutton = newButton(self,'&Restore Defaults',self.restore,None, '',
                            'restore',style=Qt.ToolButtonTextBesideIcon)
@@ -2075,6 +2196,8 @@ class ImageEditor(QDialog):
         settinglayout.addWidget(self.settings.contrast,1,1)
         settinglayout.addWidget(sharpnessLabel,2,0)
         settinglayout.addWidget(self.settings.sharpness,2,1)
+        settinglayout.addWidget(colorLabel,3,0)
+        settinglayout.addWidget(self.settings.color,3,1)
         settingGroup.setLayout(settinglayout)
         
         layout = QVBoxLayout()
@@ -2086,26 +2209,32 @@ class ImageEditor(QDialog):
     def updateSettings(self):
         window = self.parent().window()
         image = window.cvimage
+        
         if image is None:
             return
+        
         brightnesvalue = self.settings.brightness.value()
         contrastvalue = self.settings.contrast.value()
         sharpnessvalue = self.settings.sharpness.value()
+        colorvalue = self.settings.color.value()
+        
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         pilimage = Image.fromarray(image)
         pilimage = ImageEnhance.Brightness(pilimage).enhance(brightnesvalue/100)
         pilimage = ImageEnhance.Contrast(pilimage).enhance(contrastvalue/100)
         pilimage = ImageEnhance.Sharpness(pilimage).enhance(sharpnessvalue/100)
+        pilimage = ImageEnhance.Color(pilimage).enhance(colorvalue/100)
+        
         shapes = window.canvas.shapes
         window.image = ImageQt.ImageQt(pilimage)
         window.loadPixmapToCanvas()
         window.canvas.loadShapes(shapes)
-        pass
     
     def restore(self):
         self.settings.brightness.setValue(100)
         self.settings.contrast.setValue(100)
         self.settings.sharpness.setValue(100)
-        pass
+        self.settings.color.setValue(100)
 
 class ColorDialog(QColorDialog):
     def __init__(self, parent=None):
