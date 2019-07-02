@@ -19,7 +19,7 @@ from PIL import Image, ImageQt, ImageEnhance
 from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
                             QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
                             QCheckBox, QCompleter, QDockWidget, QHBoxLayout, QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
-                            QDialogButtonBox,QProgressBar, QDialog, QToolBar, QDesktopWidget)
+                            QDialogButtonBox,QProgressBar, QDialog, QToolBar, QDesktopWidget, QAbstractSpinBox)
 from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QRect, QSettings, QSize, QPointF,QPoint,Signal,QTimer,
                          Slot,)
 from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath, QFontMetrics, QImage,
@@ -1034,7 +1034,7 @@ class Canvas(QWidget):
             pal = QPalette()
             pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
             icon = QIcon(__appIcon__)
-            defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
+            defaultPixmap = icon.pixmap(QSize(100,100))
             p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
             self.setPalette(pal)
             self.setEnabled(False)
@@ -1354,15 +1354,16 @@ class Canvas(QWidget):
 
 class MainWindow(QMainWindow):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
-
+    frameUpdated = Signal(int, int)
+    
     def __init__(self, defaultFilename=None, defaultPrefdefClassFile=None, defaultSaveDir=None):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
-#        self.showNormal()
-#        self.setGeometry(30 ,30 ,1300 ,695)
         self.setWindowIcon(QIcon(__appIcon__))
-#        self.setWindowOpacity(0.3)
+    
         self.colorDialog = ColorDialog(parent=self)
+        
+        self.frameUpdated.connect(self.updatePixmap)
         
         self.canvas = Canvas(parent=self)
         self.canvas.zoomRequest.connect(self.zoomRequest)
@@ -1472,17 +1473,17 @@ class MainWindow(QMainWindow):
                            'Fit to canvas size',style=Qt.ToolButtonTextBesideIcon, checkable=True, enabled=False)
         
         play_button = button('&Play', self.Play,'Space', 'play',
-                           'Start playing video',stylesheet="border-radius: 4px;",IconSize=QSize(35,35))
+                           'Start playing video',stylesheet="border-radius: 4px;",IconSize=QSize(30,30))
         
         previous_button = button('&Previous', self.loadPreviousframe,'A', 'previous',
                            'Go to previous frame',stylesheet="border-radius: 4px;", IconSize=QSize(25,25))
-
+        
         next_button = button('&Next', self.loadNextframe,'D', 'next',
                            'Go to next frame',stylesheet="border-radius: 4px;",IconSize=QSize(25,25))
-
+        
         usePrevious_botton = button('&Use Previous', self.loadPreviousFrameShapes,'I', 'use-previous',
                            'Use previous frame shapes',stylesheet="border-radius: 4px;", IconSize=QSize(25,25))
-                
+        
         full_screen = button('&Go full screen', self.toggleFullscreen,'Ctrl+Tab' ,'full-screen',
                              'Go full screen',)
 
@@ -1530,7 +1531,20 @@ class MainWindow(QMainWindow):
         addActions(self.canvas, self.actions.menu)
         self.canvas.edgeSelected.connect(self.actions.addPoint.setEnabled)
         
-        self.frameinfo = QLabel('<b>0</b> / 0')
+        self.frameinfo = QSpinBox()
+        self.frameinfo.setButtonSymbols(QSpinBox.NoButtons)
+        self.frameinfo.setSingleStep(1)
+        self.frameinfo.setRange(0,0)
+        self.frameinfo.setAlignment(Qt.AlignCenter)
+        self.frameinfo.setSuffix(' / 0')
+        self.frameinfo.valueChanged.connect(self.loadFrame)
+        
+        self.fpsbox = QComboBox()
+        self.fpsbox.addItems(['max', '20', '15', '10', '5', '1'])
+        self.fpsbox.setMaximumSize(QSize(45,20))
+        self.fpsbox.setToolTip('Frame rate')
+        self.fpsbox.setStatusTip('Frame rate')
+        
         self.videoslider = QSlider(Qt.Horizontal)
         self.videoslider.setValue(0)
         self.videoslider.setTickPosition(QSlider.TicksBelow)
@@ -1558,13 +1572,15 @@ class MainWindow(QMainWindow):
                                         margin: 1px 0;
                                         border-radius: 3px;}
                                        ''')
-        self.controls = QHBoxLayout()
+        self.controls = QHBoxLayout()      
         self.controls.setContentsMargins(0,0,5,0)
         self.controls.setAlignment(Qt.AlignLeft)
+        
         self.controls.addWidget(self.buttons.previous_button)
         self.controls.addWidget(self.buttons.play_button)
         self.controls.addWidget(self.buttons.next_button)
         self.controls.addWidget(self.buttons.usePrevious_botton)
+        self.controls.addWidget(self.fpsbox)
         self.controls.addWidget(self.videoslider)
         
         menubar = self.menuBar()
@@ -1576,6 +1592,7 @@ class MainWindow(QMainWindow):
       
         toolbar = QToolBar('Quick Access')
         toolbar.setMaximumHeight(28)
+        toolbar.setContentsMargins(0,0,0,0)
         toolbar.setFloatable(True)
         toolbar.setMovable(False)
 #        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
@@ -1592,9 +1609,9 @@ class MainWindow(QMainWindow):
         
         self.statusBar().addPermanentWidget(self.progressbar)
         self.statusBar().addPermanentWidget(self.labelCoordinates)
-        self.statusBar().addPermanentWidget(QLabel('Frame No'))
+        self.statusBar().addPermanentWidget(QLabel('<b>Frame:</b>'))
         self.statusBar().addPermanentWidget(self.frameinfo)
-        self.statusBar().addPermanentWidget(QLabel('<b>Zoom</b>'))
+        self.statusBar().addPermanentWidget(QLabel('<b>Zoom:</b>'))
         self.statusBar().addPermanentWidget(self.zoomWidget)
         self.statusBar().addPermanentWidget(self.buttons.fitWindow_button)
         self.statusBar().addPermanentWidget(self.buttons.full_screen)
@@ -1613,28 +1630,17 @@ class MainWindow(QMainWindow):
                                 color: black;
                                 }
                               ''')
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0,0,0,0)
-        layout.addWidget(self.scrollArea)
-        layout.addLayout(self.controls)
-        
+        self.layout = QVBoxLayout()
+        self.layout.setContentsMargins(0,0,0,0)
+        self.layout.addWidget(self.scrollArea)
+        self.layout.addLayout(self.controls)
         window = QWidget()
-        window.setLayout(layout)
+        window.setLayout(self.layout)
         self.setCentralWidget(window)
         
         self.zoomWidget.setEnabled(False)
-        self.windowfade('in')
-
-    def windowfade(self,effect = 'in'):
-        if effect == 'in':
-            along = range(1,201)
-            maxval = 200
-        for i in along:
-            self.setWindowOpacity(i/maxval)
-            self.showMaximized()
-            QApplication.processEvents()
-            time.sleep(1/10000)
-        self.setWindowOpacity(1)
+        self.frameinfo.setEnabled(False)
+        self.setControlsHidden(True)
         self.showMaximized()
         
     def closeFile(self):
@@ -1645,7 +1651,8 @@ class MainWindow(QMainWindow):
             filename = QFileDialog.getOpenFileName(self, '%s - Open file' % __appname__, '',
                 'Video Files (*.avi;*.mp4);; Image Files (*.jpg; *.jpeg; *.jpe; *.jp2; *.png; *.bmp)')[0]
             if os.path.isfile(filename):
-                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
+#                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
+                self.loadFile(os.path.abspath(filename))
                 
         elif filetype == 'folder':
             targetDirPath = str(QFileDialog.getExistingDirectory(
@@ -1659,7 +1666,11 @@ class MainWindow(QMainWindow):
             "Are you sure to Quit ?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
         if self.reply == QMessageBox.Yes:
-            self.imageditor.close()
+            if self.imageditor.isVisible():
+                self.imageditor.close()
+            if self.video and  self.video.isOpened():
+                self.video.release()
+                cv2.destroyAllWindows()
             event.accept()
         else:
             event.ignore()
@@ -1695,6 +1706,20 @@ class MainWindow(QMainWindow):
     def loadPreviousFrameShapes(self):
         print("use previous doesnot work")
     
+    def updatePixmap(self,current, total):
+        if not current == self.frameinfo.value():
+            self.frameinfo.setValue(current)
+        if not current == self.videoslider.value():
+            self.videoslider.setValue(current)
+            
+        if self.videobuffer:
+            self.cvimage = self.videobuffer[current]
+        elif self.imagefiles:
+            self.cvimage = cv2.imread(self.imagefiles[current])
+        self.image = self.convertToQImage(self.cvimage)
+        
+        pass
+        
     def isCompatible(self,file,filetype='img'):
         if filetype == 'img':
             compatible_file_formats = [".jpg", ".jpeg", ".jpe", ".jp2", ".png", ".bmp"]
@@ -1707,17 +1732,14 @@ class MainWindow(QMainWindow):
         if ext in compatible_file_formats:
             return True
         return False
-
-    def keyPressEvent(self, ev):
-        key = ev.key()
-        mods = ev.modifiers()
-        
-        
+    
     def timerEvent(self, e):
-        if self.value >= 100:
+        if not self.progressbar.isHidden() and self.value >= 100:
             self.timer.stop()
             self.progressbar.setHidden(True)
-        self.progressbar.setValue(int(self.value))
+            self.progressbar.setValue(0)
+        if not self.progressbar.isHidden():
+            self.progressbar.setValue(int(self.value))
                 
     def loadFile(self,Path):
         self.filePath = Path
@@ -1728,32 +1750,46 @@ class MainWindow(QMainWindow):
             self.videobuffer = []
             self.imagefiles = []
             self.totalframes = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
-            self.timer.start(100,self)
+            if self.totalframes > 2000:
+                QMessageBox.critical(self, 'Error',"Larger videos  are not supported in this version")
+                self.video.release()
+                cv2.destroyAllWindows()
+                self.loadPixmapToCanvas()
+                self.paintCanvas()
+                return
+            self.frameNum = 0
             self.progressbar.setHidden(False)
+            self.timer.start(100,self)
             while self.video.isOpened():
+                self.video.set(15,self.frameNum)
                 ret, frame = self.video.read()
-                self.value = (int(self.video.get(cv2.CAP_PROP_POS_FRAMES))/self.totalframes)*100
+                self.value = (self.frameNum/self.totalframes)*100
                 QCoreApplication.processEvents()
                 if ret is True:
                     self.videobuffer.append(frame)
+                    self.frameNum += 1
                 else:
-                    break
+                    break                   
             self.video.release()
             cv2.destroyAllWindows()
             self.video = None
-            self.frameNum = 0
-            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
-            self.videoslider.setHidden(False)
+            self.setControlsHidden(False)
+            self.frameNum, self.totalframes = 0, len(self.videobuffer)
+            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.videoslider.setRange(self.frameNum,self.totalframes-1)
-            self.videoslider.setValue(self.frameNum)
-            self.cvimage = self.videobuffer[self.frameNum]
-            self.image = self.convertToQImage(self.cvimage)
+            self.frameinfo.setRange(self.frameNum, self.totalframes-1)
+            self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
+#            self.videoslider.setHidden(False)
+            
             
         elif self.isCompatible(Path,filetype = 'img'):
-            #image = self.convertToQImage(read(FilePath, None))
+            self.setControlsHidden(True)
+            self.frameNum, self.totalframes = 0, 1
+            self.frameUpdated.emit(0, 1)
             self.cvimage = cv2.imread(Path)
             self.image = self.convertToQImage(self.cvimage)
-            self.videoslider.setHidden(True)
+#            self.videoslider.setHidden(True)
+            
         else:
             assert False,"unsupported image"
         self.loadPixmapToCanvas()
@@ -1776,17 +1812,21 @@ class MainWindow(QMainWindow):
             imagepath = os.path.abspath(os.path.join(dirpath,file))
             if os.path.isfile(imagepath):
                 self.imagefiles.append(imagepath)
-                
-        self.totalframes = len(self.imagefiles)
-        self.frameNum = 0
-        self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
-        self.videoslider.setHidden(False)
-        self.videoslider.setRange(self.frameNum,self.totalframes-1)
-        self.videoslider.setValue(self.frameNum)
+        
+        self.frameNum, self.totalframes = 0, len(self.imagefiles)
+        
         if not self.totalframes == 0:
-            self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
-            self.image = self.convertToQImage(self.cvimage)
-            
+            self.setControlsHidden(False)
+            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
+            self.videoslider.setRange(self.frameNum,self.totalframes-1)
+            self.frameinfo.setRange(self.frameNum, self.totalframes-1)
+            self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
+#            self.videoslider.setHidden(False)
+        else:
+            self.setControlsHidden(True)
+            self.frameUpdated.emit(0, 1)
+#            self.videoslider.setHidden(True)
+            QMessageBox.warning(self, 'Warning', "Selected Folder does not contain supported files")
         self.loadPixmapToCanvas()
         self.paintCanvas()
         
@@ -1796,31 +1836,32 @@ class MainWindow(QMainWindow):
             self.toggleActions(True)
         else:   
             self.toggleActions(False)
-
-    def loadFrame(self):
+            
+    def setControlsHidden(self, hide=True):
+        if hide:
+            self.layout.removeItem(self.controls)
+        else:
+            self.layout.addLayout(self.controls)
+            
+        self.buttons.previous_button.setVisible(not hide)
+        self.buttons.play_button.setVisible(not hide)
+        self.buttons.next_button.setVisible(not hide)
+        self.buttons.usePrevious_botton.setVisible(not hide)
+        self.fpsbox.setVisible(not hide)
+        self.videoslider.setVisible(not hide)
+        
+    def loadFrame(self, value):
         if self.play_status is True:
             return
-        self.frameNum = self.videoslider.value()
-        self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
-        if self.videobuffer:
-            self.cvimage = self.videobuffer[self.frameNum]
-        elif self.imagefiles:
-            self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
-        self.image = self.convertToQImage(self.cvimage)
+        self.frameNum = value
+        self.frameUpdated.emit(value, self.totalframes-1)
         self.loadPixmapToCanvas()
             
     def loadNextframe(self):
-        #print("next")  
         canload = (self.videobuffer or self.imagefiles) and (self.frameNum+1 < self.totalframes)
         if canload:
             self.frameNum += 1
-            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
-            self.videoslider.setValue(self.frameNum)
-            if self.videobuffer:
-                self.cvimage = self.videobuffer[self.frameNum]
-            elif self.imagefiles:
-                self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
-            self.image = self.convertToQImage(self.cvimage)
+            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.loadPixmapToCanvas()
             if self.imageditor.isVisible():
                 self.imageditor.updateSettings()
@@ -1828,28 +1869,33 @@ class MainWindow(QMainWindow):
         return False
 
     def loadPreviousframe(self):
-        #print("previous")
         canload = (self.videobuffer or self.imagefiles) and (self.frameNum-1 >= 0)
         if canload:
             self.frameNum -= 1
-            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
-            self.videoslider.setValue(self.frameNum)
-            if self.videobuffer:
-                self.cvimage = self.videobuffer[self.frameNum]
-            elif self.imagefiles:
-                self.cvimage = cv2.imread(self.imagefiles[self.frameNum])
-            self.image = self.convertToQImage(self.cvimage)
+            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.loadPixmapToCanvas()
             if self.imageditor.isVisible():
                 self.imageditor.updateSettings()
             return True
         return False
 
+
+    def togglePlayMode(self, status = True):
+        self.videoslider.setEnabled(not status)
+        self.buttons.previous_button.setEnabled(not status)
+        self.buttons.next_button.setEnabled(not status)
+        self.buttons.usePrevious_botton.setEnabled(not status)
+        self.fpsbox.setEnabled(not status)
+        self.frameinfo.setEnabled(not status)
+        if status is True:
+            self.buttons.play_button.setIcon(newIcon('pause'))
+        else:
+            self.buttons.play_button.setIcon(newIcon('play'))
+            
     def toggleDrawingSensitive(self, drawing=True):
         """In the middle of drawing, toggling between modes should be disabled."""
         self.canvas.setEditing(not drawing)
         self.actions.editMode.setEnabled(not drawing)
-#        self.actions.undoLastPoint.setEnabled(drawing)
         self.actions.undo.setEnabled(not drawing)
         self.actions.delete.setEnabled(not drawing)
         self.actions.createPolygonMode.setEnabled(not drawing)
@@ -1955,55 +2001,52 @@ class MainWindow(QMainWindow):
 
     def Play(self):
         canload = (self.videobuffer or self.imagefiles) and not self.play_status
+        selection = self.fpsbox.currentText() 
+        fps = int(selection) if not selection == 'max' else 100
+        fconst = 1/int(round((5*(fps/2))))
         if canload:
             self.play_status = True
-            self.buttons.play_button.setIcon(newIcon('pause'))
-            self.videoslider.setEnabled(False)
-            self.buttons.previous_button.setEnabled(False)
-            self.buttons.next_button.setEnabled(False)
-            self.buttons.usePrevious_botton.setEnabled(False)
+            self.togglePlayMode(True)
             if self.videobuffer: 
                 source = self.videobuffer[self.frameNum:]
             elif self.imagefiles:
                 source = self.imagefiles[self.frameNum:]
             transfertobuffer = self.frameNum == 0
             for frame in source:
+                fstart = time.time()
                 self.cvimage = frame
                 if type(frame) is str:
                     self.cvimage = cv2.imread(frame)
                     if transfertobuffer is True:
-                        self.videobuffer.append(self.cvimage)                        
+                        self.videobuffer.append(self.cvimage)
+                QCoreApplication.processEvents()
                 self.image = self.convertToQImage(self.cvimage)
                 self.loadPixmapToCanvas()
+                
                 if self.imageditor.isVisible():
                     self.imageditor.updateSettings()
-                QCoreApplication.processEvents()
                 if self.play_status is False:
-                    self.videoslider.setEnabled(True)
-                    self.buttons.previous_button.setEnabled(True)
-                    self.buttons.next_button.setEnabled(True)
-                    self.buttons.usePrevious_botton.setEnabled(True)
+                    self.togglePlayMode(False)
                     if self.imagefiles:
                         self.videobuffer = []
                     return
                 self.frameNum += 1
-                self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+                if not abs(fstart - time.time()) >= fconst:
+                    time.sleep(abs(fstart - time.time() - fconst))
+                self.frameinfo.setValue(self.frameNum)
                 self.videoslider.setValue(self.frameNum)
+                QCoreApplication.processEvents()
             self.frameNum = 0
-            self.frameinfo.setText('<b>{}</b> / {}'.format(self.frameNum,self.totalframes-1))
+            self.frameinfo.setValue(self.frameNum)
             self.videoslider.setValue(self.frameNum)
-            self.videoslider.setEnabled(True)
-            self.buttons.previous_button.setEnabled(True)
-            self.buttons.next_button.setEnabled(True)
-            self.buttons.usePrevious_botton.setEnabled(True)
             self.play_status = False
-            self.buttons.play_button.setIcon(newIcon('play'))
+            self.togglePlayMode(False)
             if self.imagefiles and len(self.imagefiles) == len(self.videobuffer):
                 self.imagefiles = []
         else:
             self.play_status = False
-            self.buttons.play_button.setIcon(newIcon('play'))
-            
+            self.togglePlayMode(False)
+    
     def toggleFullscreen(self):
         if self.isFullScreen() is True:
             self.showMaximized()
@@ -2013,6 +2056,7 @@ class MainWindow(QMainWindow):
     def toggleActions(self, value=True):
         """Enable/Disable widgets which depend on an opened image."""
         self.zoomWidget.setEnabled(value)
+        self.frameinfo.setEnabled(value)
         self.buttons.fitWindow_button.setEnabled(value)
         for action in self.actions.onLoadActive:
             action.setEnabled(value)
@@ -2121,6 +2165,7 @@ class MainWindow(QMainWindow):
             self.scrollBars[Qt.Vertical].setValue(self.scrollBars[Qt.Vertical].value() + y_shift)
             
     def setFitWindow(self, value=True):
+        self.buttons.fitWindow_button.setChecked(value)
         self.zoomMode = self.FIT_WINDOW if value else self.MANUAL_ZOOM
         self.adjustScale()
 
