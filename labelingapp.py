@@ -73,7 +73,6 @@ class Shape(object):
             self.MOVE_EDGE: (1.0, self.E_LINE_H),
             self.NEAR_EDGE: (1.0, self.E_LINE),
         }
-
         self._closed = False
 
         if line_color is not None:
@@ -431,7 +430,9 @@ class Canvas(QWidget):
         self.offsets = QPoint(), QPoint()
         self.scale = 1.0
         self.pixmap = QPixmap()
+        # TODO: hiding and locking shapes need to be added
         self.visible = {}
+        self.locked = {}
         self._hideBackround = False
         self.hideBackround = False
         self.hShape = None
@@ -1032,10 +1033,17 @@ class Canvas(QWidget):
             self.setEnabled(True)
         else:
             pal = QPalette()
-            pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
+            font = QFont()
+            pal.setColor(self.backgroundRole(), QColor(190, 190, 190, 255))
             icon = QIcon(__appIcon__)
-            defaultPixmap = icon.pixmap(QSize(100,100))
+            defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
             p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
+            font.setPointSize(20)
+            font.setBold(True)
+            font.setFamily('Consolas')
+            p.setFont(font)
+            p.setPen(QPen(QColor(140,140,140)))
+            p.drawText((-1*defaultPixmap.width()/2)-10,(defaultPixmap.height()/2)+10,'empty :(')
             self.setPalette(pal)
             self.setEnabled(False)
         p.end()
@@ -1360,10 +1368,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
         self.setWindowIcon(QIcon(__appIcon__))
-    
         self.colorDialog = ColorDialog(parent=self)
-        
-        self.frameUpdated.connect(self.updatePixmap)
         
         self.canvas = Canvas(parent=self)
         self.canvas.zoomRequest.connect(self.zoomRequest)
@@ -1372,6 +1377,8 @@ class MainWindow(QMainWindow):
         self.canvas.selectionChanged.connect(self.shapeSelectionChanged)
         self.canvas.drawingPolygon.connect(self.toggleDrawingSensitive)
         self.canvas.scrollRequest.connect(self.scrollRequest)
+        
+        self.frameUpdated.connect(self.updatePixmap)
         
         self.zoomWidget = ZoomWidget()
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
@@ -1410,6 +1417,7 @@ class MainWindow(QMainWindow):
         self.lineColor = None
         self.fillColor = None
         self.play_status = False
+        self.skipStepValue = int()
         self.previous_Scroll_pos = None
         
         action = functools.partial(newAction,self)
@@ -1417,8 +1425,8 @@ class MainWindow(QMainWindow):
         createPolygonMode = action('Polygons', lambda: self.toggleDrawMode(False, createMode='polygon'),
             'Ctrl+P', 'polygon', 'Start drawing polygons', enabled=False,)
         
-        createCubeMode = action('Cube', lambda: self.toggleDrawMode(False, createMode='cube'),
-            'C', 'cube', 'Start drawing cube', enabled=False,)
+        createCubeMode = action('Cuboid', lambda: self.toggleDrawMode(False, createMode='cube'),
+            'C', 'cuboid', 'Start drawing Cuboid', enabled=False,)
         
         createRectangleMode = action('Rectangle', lambda: self.toggleDrawMode(False, createMode='rectangle'),
             'Ctrl+R', 'rectangle', 'Start drawing rectangles', enabled=False,)
@@ -1532,13 +1540,19 @@ class MainWindow(QMainWindow):
         self.canvas.edgeSelected.connect(self.actions.addPoint.setEnabled)
         
         self.frameinfo = QSpinBox()
-        self.frameinfo.setButtonSymbols(QSpinBox.NoButtons)
         self.frameinfo.setSingleStep(1)
         self.frameinfo.setRange(0,0)
         self.frameinfo.setAlignment(Qt.AlignCenter)
         self.frameinfo.setSuffix(' / 0')
+        self.frameinfo.setStatusTip('Go to a frame')
         self.frameinfo.valueChanged.connect(self.loadFrame)
         
+        self.skipstep = QSpinBox()
+        self.skipstep.setValue(1)
+        self.skipstep.setRange(1,1)
+        self.skipstep.setAlignment(Qt.AlignHCenter)
+        self.skipstep.setSuffix(' frame')
+               
         self.fpsbox = QComboBox()
         self.fpsbox.addItems(['max', '20', '15', '10', '5', '1'])
         self.fpsbox.setMaximumSize(QSize(45,20))
@@ -1551,27 +1565,7 @@ class MainWindow(QMainWindow):
         self.videoslider.setTickInterval(1)
         self.videoslider.valueChanged.connect(self.loadFrame)
         self.videoslider.setHidden(True)
-        self.videoslider.setStyleSheet('''
-                                      QSlider::groove:horizontal {
-                                       border: 1px solid lightgray;
-                                       height: 3px; 
-                                       background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 mediumslateblue, stop:1 cornflowerblue);
-                                       border-radius: 3px;}
-                                     QSlider::handle:horizontal {
-                                       background: white;
-                                       border: 1px solid lightgray;
-                                       width: 8px;
-                                       height: 8px;
-                                       margin: -8px 0;
-                                       border-radius: 4px;}
-                                     QSlider::handle:horizontal:pressed {
-                                      background-color: lightgray;}
-                                     QSlider::sub-page:horizontal {
-                                        background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:1 magenta, stop:0 lightpink);
-                                        height: 3px;
-                                        margin: 1px 0;
-                                        border-radius: 3px;}
-                                       ''')
+        
         self.controls = QHBoxLayout()      
         self.controls.setContentsMargins(0,0,5,0)
         self.controls.setAlignment(Qt.AlignLeft)
@@ -1581,12 +1575,13 @@ class MainWindow(QMainWindow):
         self.controls.addWidget(self.buttons.next_button)
         self.controls.addWidget(self.buttons.usePrevious_botton)
         self.controls.addWidget(self.fpsbox)
+#        self.controls.addWidget(self.skipstep)
         self.controls.addWidget(self.videoslider)
         
         menubar = self.menuBar()
         menubar.setMaximumHeight(20)
         fileMenu = menubar.addMenu('&File')
-        addActions(fileMenu, [self.actions.Openfile, self.actions.Openfolder, self.actions.Close])
+        addActions(fileMenu, [self.actions.Openfile, self.actions.Openfolder, self.actions.Close, self.actions.Quit])
         
         helpmenu = menubar.addMenu('&Help')
       
@@ -1595,6 +1590,7 @@ class MainWindow(QMainWindow):
         toolbar.setContentsMargins(0,0,0,0)
         toolbar.setFloatable(True)
         toolbar.setMovable(False)
+        toolbar.setHidden(True)
 #        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         toolbar.addAction(self.actions.Openfile)
         toolbar.addAction(self.actions.Openfolder)
@@ -1609,6 +1605,8 @@ class MainWindow(QMainWindow):
         
         self.statusBar().addPermanentWidget(self.progressbar)
         self.statusBar().addPermanentWidget(self.labelCoordinates)
+        self.statusBar().addPermanentWidget(QLabel('<b>Skip:</b>'))
+        self.statusBar().addPermanentWidget(self.skipstep)
         self.statusBar().addPermanentWidget(QLabel('<b>Frame:</b>'))
         self.statusBar().addPermanentWidget(self.frameinfo)
         self.statusBar().addPermanentWidget(QLabel('<b>Zoom:</b>'))
@@ -1616,19 +1614,46 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.buttons.fitWindow_button)
         self.statusBar().addPermanentWidget(self.buttons.full_screen)
         self.statusBar().setMaximumHeight(25)
-        self.setStyleSheet('''QProgressBar {
+        self.setStyleSheet('''
+                              QProgressBar {
                                 border-radius: 5px;
                                 border: 2px solid lightgrey;
                                 text-align: center;
                                 margin: 1px 0;
-                                }
+                              }
                               QProgressBar::chunk {
                                 background: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 hotpink, stop:1 cornflowerblue);
-                                }
+                              }
                               QStatusBar {
                                 background-color: white;
                                 color: black;
-                                }
+                              }
+                              QStatusBar::separator{
+                                background-color: white;
+                              }
+                              QSlider::groove:horizontal {
+                                border: 1px solid lightgray;
+                                height: 3px;
+                                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 mediumslateblue, stop:1 cornflowerblue);
+                                border-radius: 3px;
+                             }
+                             QSlider::handle:horizontal {
+                                background: white;
+                                border: 1px solid lightgray;
+                                width: 8px;
+                                height: 8px;
+                                margin: -8px 0;
+                                border-radius: 4px;
+                             }
+                             QSlider::handle:horizontal:pressed {
+                                background-color: lightgray;
+                             }
+                             QSlider::sub-page:horizontal {
+                                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:1 magenta, stop:0 lightpink);
+                                height: 3px;
+                                margin: 1px 0;
+                                border-radius: 3px;
+                             }
                               ''')
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0,0,0,0)
@@ -1640,8 +1665,11 @@ class MainWindow(QMainWindow):
         
         self.zoomWidget.setEnabled(False)
         self.frameinfo.setEnabled(False)
+        self.skipstep.setEnabled(False)
         self.setControlsHidden(True)
         self.showMaximized()
+#        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
+        
         
     def closeFile(self):
         pass
@@ -1748,6 +1776,7 @@ class MainWindow(QMainWindow):
         if self.isCompatible(Path,filetype = 'vid') and self.video is None:
             self.video = self.readVideo(Path)
             self.videobuffer = []
+            self.temp = []
             self.imagefiles = []
             self.totalframes = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
             if self.totalframes > 2000:
@@ -1756,7 +1785,7 @@ class MainWindow(QMainWindow):
                 cv2.destroyAllWindows()
                 self.loadPixmapToCanvas()
                 self.paintCanvas()
-                return
+                return            
             self.frameNum = 0
             self.progressbar.setHidden(False)
             self.timer.start(100,self)
@@ -1766,10 +1795,15 @@ class MainWindow(QMainWindow):
                 self.value = (self.frameNum/self.totalframes)*100
                 QCoreApplication.processEvents()
                 if ret is True:
-                    self.videobuffer.append(frame)
+                    if len(self.temp) >= 500:
+                        self.videobuffer += self.temp
+                        self.temp = []
+                    self.temp.append(frame)
                     self.frameNum += 1
                 else:
-                    break                   
+                    self.videobuffer += self.temp
+                    del self.temp
+                    break
             self.video.release()
             cv2.destroyAllWindows()
             self.video = None
@@ -1777,10 +1811,10 @@ class MainWindow(QMainWindow):
             self.frameNum, self.totalframes = 0, len(self.videobuffer)
             self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.videoslider.setRange(self.frameNum,self.totalframes-1)
+            self.skipstep.setRange(self.frameNum+1,self.totalframes-1)
             self.frameinfo.setRange(self.frameNum, self.totalframes-1)
             self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
 #            self.videoslider.setHidden(False)
-            
             
         elif self.isCompatible(Path,filetype = 'img'):
             self.setControlsHidden(True)
@@ -1789,7 +1823,7 @@ class MainWindow(QMainWindow):
             self.cvimage = cv2.imread(Path)
             self.image = self.convertToQImage(self.cvimage)
 #            self.videoslider.setHidden(True)
-            
+
         else:
             assert False,"unsupported image"
         self.loadPixmapToCanvas()
@@ -1820,6 +1854,7 @@ class MainWindow(QMainWindow):
             self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.videoslider.setRange(self.frameNum,self.totalframes-1)
             self.frameinfo.setRange(self.frameNum, self.totalframes-1)
+            self.skipstep.setRange(self.frameNum+1,self.totalframes-1)
             self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
 #            self.videoslider.setHidden(False)
         else:
@@ -1860,7 +1895,8 @@ class MainWindow(QMainWindow):
     def loadNextframe(self):
         canload = (self.videobuffer or self.imagefiles) and (self.frameNum+1 < self.totalframes)
         if canload:
-            self.frameNum += 1
+            step = self.skipstep.value()
+            self.frameNum += step
             self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.loadPixmapToCanvas()
             if self.imageditor.isVisible():
@@ -1871,7 +1907,8 @@ class MainWindow(QMainWindow):
     def loadPreviousframe(self):
         canload = (self.videobuffer or self.imagefiles) and (self.frameNum-1 >= 0)
         if canload:
-            self.frameNum -= 1
+            step = self.skipstep.value()
+            self.frameNum -= step
             self.frameUpdated.emit(self.frameNum, self.totalframes-1)
             self.loadPixmapToCanvas()
             if self.imageditor.isVisible():
@@ -2056,7 +2093,12 @@ class MainWindow(QMainWindow):
     def toggleActions(self, value=True):
         """Enable/Disable widgets which depend on an opened image."""
         self.zoomWidget.setEnabled(value)
-        self.frameinfo.setEnabled(value)
+        if self.videobuffer or self.imagefiles:
+            self.skipstep.setEnabled(value)
+            self.frameinfo.setEnabled(value)
+        else:
+            self.skipstep.setEnabled(False)
+            self.frameinfo.setEnabled(False)
         self.buttons.fitWindow_button.setEnabled(value)
         for action in self.actions.onLoadActive:
             action.setEnabled(value)
@@ -2433,4 +2475,4 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())  
+    sys.exit(app.exec_())
