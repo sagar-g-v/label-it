@@ -129,10 +129,11 @@ class Shape(object):
         if self.shape_type == 'rectangle': 
             w,h = self.size()
             return w*h
-        if self.shape_type == 'circle':
+        elif self.shape_type == 'circle':
             r = self.size()
             return np.pi*(r**2)
-        return None
+        else:
+            assert False,'couldnt find area for this shape'
     
     def setOpen(self):
         self._closed = False
@@ -227,7 +228,7 @@ class Shape(object):
                 painter.fillPath(line_path, color)
 
     def drawVertex(self, path, i):
-        d = self.point_size / self.scale
+        d = self.point_size 
         shape = self.point_type
         if i == self._highlightIndex:
             size, shape = self._highlightSettings[self._highlightMode]
@@ -252,19 +253,19 @@ class Shape(object):
             edgepath.lineTo(QPoint(point.x(),point.y() + roffset))
     
             if shape == self.P_WEDGE_H:
-                path.addPath(edgepath)       
+                path.addRect(point.x() - d / 5.0, point.y() - d / 5.0, 0.4*d, 0.4*d)       
             elif shape == self.P_WEDGE:
                 path.addPath(edgepath)
             else:
-                assert False, "unsupported vertex shape"   
+                assert False, "unsupported vertex shape"
         else:
             point = self.points[i]
             if shape == self.P_SQUARE:
-                path.addRect(point.x() - d / 2.0, point.y() - d / 2.0, d, d)
+                path.addRect(point.x() - d / 3.0, point.y() - d / 3.0, 0.66*d, 0.66*d)
             elif shape == self.P_ROUND:
-                path.addEllipse(point, d / 2.0, d / 2.0)
+                path.addEllipse(point, d / 3.0, d / 3.0)
             else:
-                path.addEllipse(point, d / 2.0, d / 2.0)
+                path.addEllipse(point, d / 3.0, d / 3.0)
 #                assert False, "unsupported vertex shape"
             
     def nearestVertex(self, point, epsilon):
@@ -686,7 +687,7 @@ class Canvas(QWidget):
                 self.setToolTip("Click & drag to move edge")
                 self.setStatusTip(self.toolTip())
                 self.update()
-                break 
+                break
 #            elif shape.containsPoint(pos):
 #                if self.selectedVertex():
 #                    self.hShape.highlightClear()
@@ -872,7 +873,7 @@ class Canvas(QWidget):
         index, shape = self.hVertex, self.hShape
         if shape.shape_type == 'rectangle':
             w, h = shape.size()
-            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
+            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].y()), QPoint(shape[1].x(),shape[0].y())]
             point = rectanglePoints[index]
             if self.outOfPixmap(pos):
                 pos = self.intersectionPoint(point, pos)
@@ -910,8 +911,8 @@ class Canvas(QWidget):
         point = rectanglePoints[index]
         if self.outOfPixmap(pos):
             pos = self.intersectionPoint(point, pos)
-         
-        shiftPos = pos - point        
+        
+        shiftPos = pos - point
         shift = None
         if index == 1:
             if h + shiftPos.y() >= 10.0:
@@ -1034,7 +1035,7 @@ class Canvas(QWidget):
         else:
             pal = QPalette()
             font = QFont()
-            pal.setColor(self.backgroundRole(), QColor(190, 190, 190, 255))
+            pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
             icon = QIcon(__appIcon__)
             defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
             p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
@@ -1168,6 +1169,7 @@ class Canvas(QWidget):
         if QT5:
             mods = ev.modifiers()
             delta = ev.angleDelta()
+            #print(delta)
             if Qt.ControlModifier == int(mods):
                 # with Ctrl/Command key
                 # zoom
@@ -1226,75 +1228,75 @@ class Canvas(QWidget):
         elif Qt.ControlModifier == mods:
             #print("Ctrl pressed")
             if key == Qt.Key_Left and self.selectedShape:
-                self.moveOnePixel('LeftEOut')
+                self.moveOnePixel('leftEOut')
             elif key == Qt.Key_Right and self.selectedShape:
-                self.moveOnePixel('RightEOut')
+                self.moveOnePixel('rightEOut')
             elif key == Qt.Key_Up and self.selectedShape:
-                self.moveOnePixel('UpEOut')
+                self.moveOnePixel('upEOut')
             elif key == Qt.Key_Down and self.selectedShape:
-                self.moveOnePixel('DownEOut')
+                self.moveOnePixel('downEOut')
         elif (Qt.ControlModifier|Qt.ShiftModifier) == mods:
             #print("Ctrl+Shift pressed")
             if key == Qt.Key_Left and self.selectedShape:
-                self.moveOnePixel('LeftEIn')
+                self.moveOnePixel('leftEIn')
             elif key == Qt.Key_Right and self.selectedShape:
-                self.moveOnePixel('RightEIn')
+                self.moveOnePixel('rightEIn')
             elif key == Qt.Key_Up and self.selectedShape:
-                self.moveOnePixel('UpEIn')
+                self.moveOnePixel('upEIn')
             elif key == Qt.Key_Down and self.selectedShape:
-                self.moveOnePixel('DownEIn')
+                self.moveOnePixel('downEIn')
         elif Qt.AltModifier == mods:
             #print("Alt pressed")
             if key == Qt.Key_Up and self.selectedShape:
-                self.moveOnePixel('ExpandOut')
+                self.moveOnePixel('expandOut')
             elif key == Qt.Key_Down and self.selectedShape:
-                self.moveOnePixel('ExpandIn')
+                self.moveOnePixel('expandIn')
         else:
             if key == Qt.Key_Left and self.selectedShape:
-                self.moveOnePixel('Left')
+                self.moveOnePixel('left')
             elif key == Qt.Key_Right and self.selectedShape:
-                self.moveOnePixel('Right')
+                self.moveOnePixel('right')
             elif key == Qt.Key_Up and self.selectedShape:
-                self.moveOnePixel('Up')
+                self.moveOnePixel('up')
             elif key == Qt.Key_Down and self.selectedShape:
-                self.moveOnePixel('Down')
+                self.moveOnePixel('down')
 
     def moveOutOfBound(self, step):
         points = [p1+p2 for p1, p2 in zip(self.selectedShape.points, [step]*len(self.selectedShape.points))]
         return True in map(self.outOfPixmap, points)
     
     def moveOnePixel(self, direction):
-        if direction == 'Left' and not self.moveOutOfBound(QPointF(-1.0, 0)):
+        if direction == 'left' and not self.moveOutOfBound(QPointF(-1.0, 0)):
             self.selectedShape.moveBy(QPointF(-1.0, 0))
-        elif direction == 'Right' and not self.moveOutOfBound(QPointF(1.0, 0)):
+        elif direction == 'right' and not self.moveOutOfBound(QPointF(1.0, 0)):
             self.selectedShape.moveBy(QPointF(1.0, 0))
-        elif direction == 'Up' and not self.moveOutOfBound(QPointF(0, -1.0)):
+        elif direction == 'up' and not self.moveOutOfBound(QPointF(0, -1.0)):
             self.selectedShape.moveBy(QPointF(0, -1.0))
-        elif direction == 'Down' and not self.moveOutOfBound(QPointF(0, 1.0)):
+        elif direction == 'down' and not self.moveOutOfBound(QPointF(0, 1.0)):
             self.selectedShape.moveBy(QPointF(0, 1.0))
         if self.selectedShape.shape_type == 'rectangle':
             w,h = self.selectedShape.size()
-            if direction == 'LeftEOut' and not self.moveOutOfBound(QPointF(-1.0, 0)):      
+            if direction == 'leftEOut' and not self.moveOutOfBound(QPointF(-1.0, 0)):      
                 self.selectedShape.moveVertexBy(0, QPointF(-1.0, 0))
-            elif direction == 'RightEOut' and not self.moveOutOfBound(QPointF(1.0, 0)):
+            elif direction == 'rightEOut' and not self.moveOutOfBound(QPointF(1.0, 0)):
                 self.selectedShape.moveVertexBy(1, QPointF(1.0, 0))
-            elif direction == 'UpEOut' and not self.moveOutOfBound(QPointF(0, -1.0)):
+            elif direction == 'upEOut' and not self.moveOutOfBound(QPointF(0, -1.0)):
                 self.selectedShape.moveVertexBy(0, QPointF(0, -1.0))
-            elif direction == 'DownEOut' and not self.moveOutOfBound(QPointF(0, 1.0)):
+            elif direction == 'downEOut' and not self.moveOutOfBound(QPointF(0, 1.0)):
                 self.selectedShape.moveVertexBy(1, QPointF(0, 1.0))
-            elif direction == 'LeftEIn' and (w + 1.0 >=10):
+            elif direction == 'leftEIn' and (w + 1.0 >=10):
                 self.selectedShape.moveVertexBy(0, QPointF(1.0, 0))
-            elif direction == 'RightEIn' and (w - 1.0 >=10):
+            elif direction == 'rightEIn' and (w - 1.0 >=10):
                 self.selectedShape.moveVertexBy(1, QPointF(-1.0, 0))
-            elif direction == 'UpEIn' and (h + 1.0 >=10):
+            elif direction == 'upEIn' and (h + 1.0 >=10):
                 self.selectedShape.moveVertexBy(0, QPointF(0, 1.0))
-            elif direction == 'DownEIn' and (h - 1.0 >=10):
+            elif direction == 'downEIn' and (h - 1.0 >=10):
                 self.selectedShape.moveVertexBy(1, QPointF(0, -1.0))
-            elif direction == 'ExpandOut' and (not self.moveOutOfBound(QPointF(-1.0, -1.0)) or\
+            elif direction == 'expandOut' and (not self.moveOutOfBound(QPointF(-1.0, -1.0)) or\
                                                not self.moveOutOfBound(QPointF(1.0, 1.0)) ):
                 self.selectedShape.moveVertexBy(0, QPointF(-1.0, -1.0))
                 self.selectedShape.moveVertexBy(1, QPointF(1.0, 1.0))
-            elif direction == 'ExpandIn'and not((h - 1.0 <10) or (h + 1.0 <10)) and\
+            elif direction == 'expandIn'and not((h - 1.0 <10) or (h + 1.0 <10)) and\
                                             not((w - 1.0 <10) or (w + 1.0 <10)):
                 self.selectedShape.moveVertexBy(0, QPointF(1.0, 1.0))
                 self.selectedShape.moveVertexBy(1, QPointF(-1.0, -1.0))                
@@ -1617,7 +1619,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet('''
                               QProgressBar {
                                 border-radius: 5px;
-                                border: 2px solid lightgrey;
+                                border: 2px solid grey;
                                 text-align: center;
                                 margin: 1px 0;
                               }
@@ -1771,7 +1773,9 @@ class MainWindow(QMainWindow):
                 
     def loadFile(self,Path):
         self.filePath = Path
+        self.image = QImage()
         self.resetState()
+        self.loadPixmapToCanvas()
         self.canvas.setEnabled(False)
         if self.isCompatible(Path,filetype = 'vid') and self.video is None:
             self.video = self.readVideo(Path)
@@ -1869,7 +1873,9 @@ class MainWindow(QMainWindow):
         self.canvas.loadPixmap(QPixmap.fromImage(self.image))
         if not self.image.isNull():
             self.toggleActions(True)
-        else:   
+            value = self.scalers[self.FIT_WINDOW]()
+            self.zoomWidget.setRange(100*value,500)
+        else:
             self.toggleActions(False)
             
     def setControlsHidden(self, hide=True):
@@ -2153,11 +2159,13 @@ class MainWindow(QMainWindow):
     
     def adjustScale(self, initial=False):
         value = self.scalers[self.FIT_WINDOW if initial else self.zoomMode]()
+        
+        self.zoomWidget.setRange(100*self.scalers[self.FIT_WINDOW](),500)
         self.zoomWidget.setValue(int(100 * value))
         
     def scaleFitWindow(self):
         """Figure out the size of the pixmap in order to fit the main widget."""
-        e = 2.0  # So that no scrollbars are generated.
+        e = 4.0  # So that no scrollbars are generated.
         w1 = self.scrollArea.width() - e
         h1 = self.scrollArea.height() - e
         a1 = w1 / h1
@@ -2194,7 +2202,9 @@ class MainWindow(QMainWindow):
     @Slot(int, QPoint)
     def zoomRequest(self, delta,pos):
         canvas_width_old = self.canvas.width()
-        units = delta * 0.1
+        units = 10
+        if delta < 0 :
+            units = -1*units
         self.addZoom(units)
 
         canvas_width_new = self.canvas.width()
