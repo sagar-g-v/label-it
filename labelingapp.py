@@ -32,18 +32,20 @@ __icondir = 'icons'
 __appIcon__ = os.path.join(__icondir,'appicon.png')
 
 
-DEFAULT_LINE_COLOR = QColor(0, 255, 0, 128)
+DEFAULT_LINE_COLOR = QColor(0, 200, 0, 255)
 DEFAULT_FILL_COLOR = QColor(255, 0, 0, 50)
 DEFAULT_SELECT_LINE_COLOR = QColor(255, 255, 255)
-DEFAULT_SELECT_FILL_COLOR = QColor(0, 128, 255, 60)
-DEFAULT_VERTEX_FILL_COLOR = QColor(0, 255, 0, 255)
+DEFAULT_SELECT_FILL_COLOR = QColor(0, 128, 255, 50)
+DEFAULT_VERTEX_FILL_COLOR = QColor(255, 255, 255, 255)
 DEFAULT_HVERTEX_FILL_COLOR = QColor(255, 0, 0)
+DEFAULT_CONTROLPOINT_FILL_COLOR = QColor(255, 255, 255, 50)
+DEFAULT_HCONTROLPOINT_FILL_COLOR = QColor(255, 255, 0, 255)
 
 class Shape(object):
 
-    P_SQUARE, P_ROUND, P_WEDGE, P_WEDGE_H, E_LINE, E_LINE_H = list(range(6))
+    P_SQUARE, P_ROUND = list(range(2))
 
-    MOVE_VERTEX, NEAR_VERTEX ,MOVE_VERTEX_R, NEAR_VERTEX_R, MOVE_EDGE, NEAR_EDGE = list(range(6))
+    MOVE_VERTEX, NEAR_VERTEX  = list(range(2))
 
     # The following class variables influence the drawing of all shape objects.
     line_color = DEFAULT_LINE_COLOR
@@ -52,26 +54,26 @@ class Shape(object):
     select_fill_color = DEFAULT_SELECT_FILL_COLOR
     vertex_fill_color = DEFAULT_VERTEX_FILL_COLOR
     hvertex_fill_color = DEFAULT_HVERTEX_FILL_COLOR
-    point_type = P_WEDGE
+    controlpoint_fill_color = DEFAULT_CONTROLPOINT_FILL_COLOR
+    hcontrolpoint_fill_color = DEFAULT_HCONTROLPOINT_FILL_COLOR
+    point_type = P_ROUND
     point_size = 6
     scale = 1.0
 
     def __init__(self, label=None, line_color=None, shape_type=None):
         self.label = label
         self.points = []
+        self.controlvalues = []
         self.fill = False
         self.selected = False
         self.shape_type = shape_type
 
         self._highlightIndex = None
+        self._highlightContolsIndex = None
         self._highlightMode = self.NEAR_VERTEX
         self._highlightSettings = {
             self.MOVE_VERTEX: (1.5, self.P_SQUARE),
             self.NEAR_VERTEX: (4, self.P_ROUND),
-            self.NEAR_VERTEX_R: (4, self.P_WEDGE),
-            self.MOVE_VERTEX_R: (3,self.P_WEDGE_H),
-            self.MOVE_EDGE: (1.0, self.E_LINE_H),
-            self.NEAR_EDGE: (1.0, self.E_LINE),
         }
         self._closed = False
 
@@ -112,7 +114,10 @@ class Shape(object):
 
     def insertPoint(self, i, point):
         self.points.insert(i, point)
-
+    
+    def removePoint(self, i):
+        pass
+        
     def isClosed(self):
         return self._closed
 
@@ -163,21 +168,24 @@ class Shape(object):
         if self.points:
             color = self.select_line_color \
                 if self.selected else self.line_color
-            pen = QPen(color)
+            pen = QPen()
             # Try using integer sizes for smoother drawing(?)
             pen.setWidth(max(1, int(round(2.0 / self.scale))))
             painter.setPen(pen)
 
             line_path = QPainterPath()
             vrtx_path = QPainterPath()
-            
+            ctrx_path = QPainterPath()
             if self.shape_type == 'rectangle':
                 assert len(self.points) in [1, 2]
                 if len(self.points) == 2:
                     rectangle = self.getRectFromLine(*self.points)
                     line_path.addRect(rectangle)
                     for i in range(4):
+                        if len(self.controlvalues) < 4:
+                            self.controlvalues.append(QPoint())
                         self.drawVertex(vrtx_path, i)
+                        self.drawControlPoint(ctrx_path, i)
                 else:
                     for i in range(len(self.points)):
                         self.drawVertex(vrtx_path, i)
@@ -218,10 +226,17 @@ class Shape(object):
                     self.drawVertex(vrtx_path, i)
                 if self.isClosed():
                     line_path.lineTo(self.points[0])
-
+            
+            pen.setColor(color)
+            painter.setPen(pen)
             painter.drawPath(line_path)
             painter.drawPath(vrtx_path)
+            pen.setColor(QColor(200,200,0))
+            painter.setPen(pen)
+            painter.drawPath(ctrx_path)
+            
             painter.fillPath(vrtx_path, self.vertex_fill_color)
+            painter.fillPath(ctrx_path, self.controlpoint_fill_color)
             if self.fill:
                 color = self.select_fill_color \
                     if self.selected else self.fill_color
@@ -244,18 +259,20 @@ class Shape(object):
             if i <= 1:
                 point = self.points[i]    
             else:
-                point = QPoint(self.points[i-2].x(),self.points[abs(i-3)].y())             
+                point = QPoint(self.points[i-2].x(),self.points[abs(i-3)].y())            
             
-            loffset, roffset = signleft[i]*d / 2.0, signright[i]*d / 2.0
+            loffset, roffset = signleft[i]*d / 3.0, signright[i]*d / 3.0
             edgepath = QPainterPath()
             edgepath.moveTo(QPoint(point.x() + loffset,point.y()))
             edgepath.lineTo(point)
             edgepath.lineTo(QPoint(point.x(),point.y() + roffset))
     
-            if shape == self.P_WEDGE_H:
-                path.addRect(point.x() - d / 5.0, point.y() - d / 5.0, 0.4*d, 0.4*d)       
-            elif shape == self.P_WEDGE:
-                path.addPath(edgepath)
+            if shape == self.P_SQUARE:
+                path.addRect(point.x() - d / 3.0, point.y() - d / 3.0, 0.66*d, 0.66*d)       
+            elif shape == self.P_ROUND:
+                #path.addEllipse(point, d / 3.0, d / 3.0)
+                #path.addPath(edgepath)
+                pass
             else:
                 assert False, "unsupported vertex shape"
         else:
@@ -265,12 +282,56 @@ class Shape(object):
             elif shape == self.P_ROUND:
                 path.addEllipse(point, d / 3.0, d / 3.0)
             else:
-                path.addEllipse(point, d / 3.0, d / 3.0)
-#                assert False, "unsupported vertex shape"
-            
+                assert False, "unsupported vertex shape"
+
+    def drawLabel(self, path, i):
+        pass
+    
+    def drawControlPoint(self, path, i):
+        d = self.point_size 
+        shape = self.point_type
+        if i == self._highlightContolsIndex:
+            size, shape = self._highlightSettings[self._highlightMode]
+            d *= size
+        if self._highlightContolsIndex is not None:
+            self.controlpoint_fill_color = self.hcontrolpoint_fill_color
+        else:
+            self.controlpoint_fill_color = Shape.controlpoint_fill_color
+        
+        point = self.getControlPoint(i)
+        if shape == self.P_SQUARE:
+            path.moveTo(QPointF(point.x() - d / 4.0, point.y()))
+            path.lineTo(QPointF(point.x(), point.y() - d / 4.0))
+            path.lineTo(QPointF(point.x()+ d / 4.0, point.y()))
+            path.lineTo(QPointF(point.x(), point.y() + d / 4.0))
+            path.lineTo(QPointF(point.x() - d / 4.0, point.y()))
+        elif shape == self.P_ROUND:
+            pass
+            #path.addEllipse(point, d / 4.0, d / 4.0)
+        else:
+            assert False, "unsupported vertex shape"
+        
+    def drawExtendedShape(self, path, i):
+        
+        pass
+    
+    def getControlPoint(self, i):
+        if self.shape_type == 'rectangle':
+            value = self.controlvalues[i]
+            points = [self.points[0],self.points[1],
+                           QPoint(self.points[0].x(),self.points[1].y()),
+                           QPoint(self.points[1].x(),self.points[0].y())]
+            if value and value.isNull():
+                value = QPoint()
+            if (i == 0 or i == 1):
+                cpoint = points[i] + QPoint((points[abs(i-3)].x()-points[i].x())/2,value.y())
+            elif (i == 2 or i == 3):
+                cpoint = points[i] + QPoint(value.x(), (points[i-2].y()-points[i].y())/2)
+            return cpoint
+    
     def nearestVertex(self, point, epsilon):
         min_distance = float('inf')
-        min_i = None
+        nearest = None
         if self.shape_type == 'rectangle':
             points = [self.points[0],self.points[1],
                            QPoint(self.points[0].x(),self.points[1].y()),
@@ -282,13 +343,13 @@ class Shape(object):
             dist = distancetopoint(p, point)
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
-                min_i = i
-        return min_i
+                nearest = i
+        return nearest
     
     def nearestEdge(self, point, epsilon):
         min_distance = float('inf')
-        post_i = None
-        offset = 3.0
+        nearest = None
+        offset = epsilon//2 + 2.0
         if self.shape_type == 'rectangle':
             points = [self.points[0],self.points[1],
                            QPoint(self.points[0].x(),self.points[1].y()),
@@ -312,8 +373,21 @@ class Shape(object):
             dist = distancetoline(point, line)
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
-                post_i = i
-        return post_i
+                nearest = i
+        return nearest
+    
+    def nearestControlPoint(self, point, epsilon):
+        min_distance = float('inf')
+        nearest = None
+
+        if self.shape_type == 'rectangle':
+            for i in range(4):
+                cpoint = self.getControlPoint(i)
+                dist = distancetopoint(cpoint, point)
+                if dist <= epsilon and dist < min_distance:
+                    min_distance = dist
+                    nearest = i
+            return nearest
 
     def containsPoint(self, point):
         return self.makePath().contains(point)
@@ -354,12 +428,17 @@ class Shape(object):
     def moveVertexBy(self, i, offset):
         self.points[i] = self.points[i] + offset
 
-    def highlight(self, i, action):
+    def highlightVertex(self, i, action):
         self._highlightIndex = i
+        self._highlightMode = action
+    
+    def hightlightControlPoint(self, i, action):
+        self._highlightContolsIndex = i
         self._highlightMode = action
 
     def highlightClear(self):
         self._highlightIndex = None
+        self._highlightContolsIndex = None
 
     def copy(self):
         shape = Shape(label=self.label, shape_type=self.shape_type)
@@ -439,7 +518,7 @@ class Canvas(QWidget):
         self.hShape = None
         self.hVertex = None
         self.hEdge = None
-        self.hEdgeR = None
+        self.hCpoint = None
         self.movingShape = False
         self._painter = QPainter()
         self._cursor = CURSOR_DEFAULT
@@ -521,11 +600,11 @@ class Canvas(QWidget):
     def selectedVertex(self):
         return self.hVertex is not None
     
-    def selectedEdgeR(self):
-        return self.hEdgeR is not None
-    
     def selectedEdge(self):
         return self.hEdge is not None
+    
+    def selectedControlPoint(self):
+        return self.hCpoint is not None
     
     def mouseMoveEvent(self, ev):
         """Update line with last point and current coordinates."""
@@ -538,14 +617,17 @@ class Canvas(QWidget):
             return
         if not self.outOfPixmap(pos):
             self.setToolTip("Image")
+            self.setStatusTip('')
             self.parent().window().labelCoordinates.setText(
             'X: <b>%d</b>; Y: <b>%d</b> ' % (pos.x(), pos.y()))
         else:
             self.setToolTip("Canvas")
+            self.setStatusTip('')
             self.parent().window().labelCoordinates.clear()
         
         self.prevMovePoint = pos
-        self.restoreCursor()
+#        self.restoreCursor()
+        self.overrideCursor(Qt.ArrowCursor)
 
         # Polygon drawing.
         if self.drawing():
@@ -567,7 +649,7 @@ class Canvas(QWidget):
                 pos = self.current[0]
                 color = self.current.line_color
                 self.overrideCursor(CURSOR_POINT)
-                self.current.highlight(0, Shape.NEAR_VERTEX)
+                self.current.highlightVertex(0, Shape.NEAR_VERTEX)
             if self.createMode in ['polygon', 'polyline']:
                 self.line[0] = self.current[-1]
                 self.line[1] = pos
@@ -596,7 +678,7 @@ class Canvas(QWidget):
             self.repaint()
             self.current.highlightClear()
             return
-
+        
         # Polygon copy moving.
         if Qt.RightButton & ev.buttons():
             if self.selectedShapeCopy and self.prevPoint:
@@ -615,8 +697,8 @@ class Canvas(QWidget):
                 self.boundedMoveVertex(pos)
                 self.repaint()
                 self.movingShape = True
-            elif self.selectedEdgeR():
-                self.boundedMoveEdgeR(pos)
+            elif self.selectedEdge():
+                self.boundedMoveEdge(pos)
                 self.repaint()
                 self.movingShape = True
             elif self.selectedShape and self.prevPoint:
@@ -633,70 +715,52 @@ class Canvas(QWidget):
         for shape in reversed([s for s in self.shapes if self.isVisible(s)]):
             # Look for a nearby vertex to highlight. If that fails,
             # check if we happen to be inside a shape.
-            index, index_edge, rindex, rindex_edge = None, None, None, None 
-            if shape.shape_type == 'rectangle':    
-                rindex = shape.nearestVertex(pos, self.epsilon)
-                rindex_edge = shape.nearestEdge(pos, self.epsilon)
-#                print(rindex_edge)
-            else:
-                index = shape.nearestVertex(pos, self.epsilon)
-                index_edge = shape.nearestEdge(pos, self.epsilon)
-                
-            if rindex is not None:
-                if self.selectedVertex():
-                    self.hShape.highlightClear()
-                self.hVertex, self.hShape, self.hEdge = rindex, shape, None
-                shape.highlight(rindex, shape.MOVE_VERTEX_R)
-                self.overrideCursor(CURSOR_POINT)
-                self.setToolTip("Click & drag to move point")
-                self.setStatusTip(self.toolTip())
-                self.update()
-                break
+            index, eindex, cindex = None, None, None
+            index = shape.nearestVertex(pos, self.epsilon)
+            eindex = shape.nearestEdge(pos, self.epsilon)
+            cindex = shape.nearestControlPoint(pos, self.epsilon+10)
             
-            elif index is not None:
+            if index is not None:
                 if self.selectedVertex():
                     self.hShape.highlightClear()
-                self.hVertex, self.hEdge, self.hShape = index, index_edge, shape
-                shape.highlight(index, shape.MOVE_VERTEX)
+                self.hEdge, self.hShape, self.hVertex, self.hCpoint = None, shape, index, None
+                shape.highlightVertex(index, shape.MOVE_VERTEX)
                 self.overrideCursor(CURSOR_POINT)
-                self.setToolTip("Click & drag to move point")
-                self.setStatusTip(self.toolTip())
-                self.update()
-                break
-            
-            elif index_edge is not None:
-                if self.selectedVertex():
-                    self.hShape.highlightClear()
-                self.hEdge, self.hShape = index_edge, shape
-                shape.highlight(index_edge, shape.MOVE_EDGE)
-                self.overrideCursor(CURSOR_POINT)
-                self.setToolTip("Right click & add new point")
-                self.setStatusTip(self.toolTip())
+                self.setToolTip("Click & drag to move vertex")
                 self.update()
                 break
 
-            elif rindex_edge is not None:
-                if self.selectedEdgeR():
+            elif eindex is not None:
+                if self.selectedEdge():
                     self.hShape.highlightClear()
-                if rindex_edge == 0 or rindex_edge == 1:
-                    self.overrideCursor(CURSOR_VSIZE)
-                else:
-                    self.overrideCursor(CURSOR_HSIZE)
-#                shape.highlight(index_edge, shape.MOVE_VERTEX_R)
-                self.hEdgeR, self.hShape, self.hVertex = rindex_edge, shape, None
+                if shape.shape_type == 'rectangle':
+                    if eindex == 0 or eindex == 1:
+                        self.overrideCursor(CURSOR_VSIZE)
+                    else:
+                        self.overrideCursor(CURSOR_HSIZE)
+                self.hEdge, self.hShape, self.hVertex, self.hCpoint = eindex, shape, None, None
                 self.setToolTip("Click & drag to move edge")
-                self.setStatusTip(self.toolTip())
                 self.update()
                 break
-#            elif shape.containsPoint(pos):
+            
+            elif cindex is not None:
+                if self.selectedControlPoint():
+                    self.hShape.highlightClear()
+                self.hEdge, self.hShape, self.hVertex, self.hCpoint = None, shape, None, cindex
+                shape.hightlightControlPoint(cindex, shape.MOVE_VERTEX)
+                self.setToolTip("Click & drag to move point")
+                self.update()
+                break
+            
+            
+#            elif shape.containsPoint(pos):# highlight when hovering over shape
 #                if self.selectedVertex():
 #                    self.hShape.highlightClear()
 #                self.hVertex = None
 #                self.hShape = shape
-#                self.hEdge = index_edge
+#                self.hEdge = None
 #                self.setToolTip(
 #                    "Click & drag to move shape '%s'" % shape.label)
-#                self.setStatusTip(self.toolTip())
 #                self.overrideCursor(CURSOR_GRAB)
 #                self.update()
 #                break
@@ -704,7 +768,7 @@ class Canvas(QWidget):
             if self.hShape:
                 self.hShape.highlightClear()
                 self.update()
-            self.hVertex, self.hShape, self.hEdge, self.hEdgeR = None, None, None, None
+            self.hVertex, self.hShape, self.hEdge, self.hCpoint = None, None, None, None
         self.edgeSelected.emit(self.hEdge is not None)
 
     def addPointToEdge(self):
@@ -718,7 +782,7 @@ class Canvas(QWidget):
         index = self.hEdge
         point = self.prevMovePoint
         shape.insertPoint(index, point)
-        shape.highlight(index, shape.MOVE_VERTEX)
+        shape.highlightVertex(index, shape.MOVE_VERTEX)
         self.hShape = shape
         self.hVertex = index
         self.hEdge = None
@@ -730,6 +794,7 @@ class Canvas(QWidget):
             pos = self.transformPos(ev.posF())
         if ev.button() == Qt.LeftButton:
             if self.drawing():
+                self.overrideCursor(CURSOR_DRAW)
                 if self.current:
                     # Add point to existing shape.
                     if self.createMode in ['polygon']:
@@ -767,8 +832,11 @@ class Canvas(QWidget):
                         self.setHiding()
                         self.update()
             else:
+#                self.overrideCursor(Qt.ArrowCursor)
                 self.selectShapePoint(pos)
                 self.prevPoint = pos
+                if self.selectedEdge() and not self.selectedVertex():
+                    self.addPointToEdge()
                 self.repaint()
         elif ev.button() == Qt.RightButton and self.editing():
             self.selectShapePoint(pos)
@@ -841,18 +909,13 @@ class Canvas(QWidget):
         self.deSelectShape()
         if self.selectedVertex():  # A vertex is marked for selection.
             index, shape = self.hVertex, self.hShape
-            if shape.shape_type == 'rectangle':
-                shape.highlight(index, shape.MOVE_VERTEX_R)
-            else:
-                shape.highlight(index, shape.MOVE_VERTEX)
+            shape.highlightVertex(index, shape.MOVE_VERTEX)
             self.selectShape(shape)
             return
-        elif self.selectedEdgeR():
-            index, shape = self.hEdgeR, self.hShape
-#            shape.highlight(index, shape.MOVE_EDGE)
-            
-            if self.isVisible(shape) and shape.containsPoint(point):
-                self.selectShape(shape)
+        elif self.selectedEdge():
+            index, shape = self.hEdge, self.hShape
+#            shape.highlightVertex(index, shape.MOVE_EDGE)
+            self.selectShape(shape)
             return
             
         for shape in reversed(self.shapes):
@@ -879,11 +942,15 @@ class Canvas(QWidget):
                 pos = self.intersectionPoint(point, pos)
             shiftPos = pos - point
             if index == 0:
-                if h - shiftPos.y() >= 10.0 and w - shiftPos.x() >= 10.0:
-                    shape.moveVertexBy(index, shiftPos)
+                if h - shiftPos.y() >= 10.0 :
+                    shape.moveVertexBy(index, QPointF(0.0, shiftPos.y()))
+                if w - shiftPos.x() >= 10.0 :
+                    shape.moveVertexBy(index, QPointF(shiftPos.x(), 0.0))
             elif index == 1:
-                if h + shiftPos.y() >= 10.0 and w + shiftPos.x() >= 10.0:
-                    shape.moveVertexBy(index, shiftPos)
+                if h + shiftPos.y() >= 10.0 :
+                    shape.moveVertexBy(index, QPointF(0.0, shiftPos.y()))
+                if w + shiftPos.x() >= 10.0 :
+                    shape.moveVertexBy(index, QPointF(shiftPos.x(),0.0))
             elif index == 2:
                 shiftPos = pos - shape[0]
                 if w - shiftPos.x() >= 10.0:
@@ -904,8 +971,8 @@ class Canvas(QWidget):
                 pos = self.intersectionPoint(point, pos)
             shape.moveVertexBy(index, pos - point)
         
-    def boundedMoveEdgeR(self, pos):
-        index, shape = self.hEdgeR, self.hShape
+    def boundedMoveEdge(self, pos):
+        index, shape = self.hEdge, self.hShape
         rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
         w, h = shape.size()
         point = rectanglePoints[index]
@@ -1034,21 +1101,21 @@ class Canvas(QWidget):
             self.setEnabled(True)
         else:
             pal = QPalette()
-            font = QFont()
             pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
-            icon = QIcon(__appIcon__)
-            defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
-            p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
-            font.setPointSize(20)
-            font.setBold(True)
-            font.setFamily('Consolas')
-            p.setFont(font)
-            p.setPen(QPen(QColor(140,140,140)))
-            p.drawText((-1*defaultPixmap.width()/2)-10,(defaultPixmap.height()/2)+10,'empty :(')
+            self.drawlogo(p)
             self.setPalette(pal)
             self.setEnabled(False)
         p.end()
 
+    def drawlogo(self, p):
+        icon = QIcon(__appIcon__)
+        defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
+        p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
+        # and draw text
+        p.setFont(QFont('Consolas', 20,10))
+        p.setPen(QPen(QColor(140,140,140)))
+        p.drawText((-1*defaultPixmap.width()/2)-10,(defaultPixmap.height()/2)+10,'empty :(')
+        
     def transformPos(self, point):
         """Convert from widget-logical coordinates to painter-logical ones."""
         return point / self.scale - self.offsetToCenter()
@@ -1445,9 +1512,6 @@ class MainWindow(QMainWindow):
         createPolyLineMode = action('PolyLine', lambda: self.toggleDrawMode(False, createMode='polyline'),
             'Ctrl+L', 'polyline', 'Start drawing polyline. Ctrl+LeftClick ends creation.', enabled=False,)
         
-        addPoint = action('Add Point to Edge', self.canvas.addPointToEdge,
-             None, 'edit', 'Add point to the nearest edge', enabled=False)
-        
         editMode = action('Edit', self.setEditMode,
             'Ctrl+E', 'edit', 'Move and Edit', enabled=False,)
 
@@ -1510,7 +1574,6 @@ class MainWindow(QMainWindow):
             editMode,
             delete,
             undo,
-            addPoint,
             imagedit,
         )
         onLoadActive=(
@@ -1527,7 +1590,7 @@ class MainWindow(QMainWindow):
         )
         self.actions = struct(createCubeMode=createCubeMode,createPolygonMode=createPolygonMode,
                               createCircleMode=createCircleMode,createRectangleMode=createRectangleMode,
-                              addPoint=addPoint,createLineMode=createLineMode, createPointMode=createPointMode,
+                              createLineMode=createLineMode, createPointMode=createPointMode,
                               createPolyLineMode=createPolyLineMode,menu=menu,onLoadActive=onLoadActive,
                               shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,
                               Quit=Quit, editMode=editMode, delete=delete, Openfile=Openfile,
@@ -1539,7 +1602,7 @@ class MainWindow(QMainWindow):
         
         addActions(self.canvas.menus[0], self.actions.menu)
         addActions(self.canvas, self.actions.menu)
-        self.canvas.edgeSelected.connect(self.actions.addPoint.setEnabled)
+#        self.canvas.edgeSelected.connect()
         
         self.frameinfo = QSpinBox()
         self.frameinfo.setSingleStep(1)
@@ -2161,7 +2224,7 @@ class MainWindow(QMainWindow):
         value = self.scalers[self.FIT_WINDOW if initial else self.zoomMode]()
         
         self.zoomWidget.setRange(100*self.scalers[self.FIT_WINDOW](),500)
-        self.zoomWidget.setValue(int(100 * value))
+        self.zoomWidget.setValue(100 * value)
         
     def scaleFitWindow(self):
         """Figure out the size of the pixmap in order to fit the main widget."""
