@@ -31,6 +31,15 @@ __appname__ = 'mylabelingapp'
 __icondir = 'icons'
 __appIcon__ = os.path.join(__icondir,'appicon.png')
 
+# TODO: occluded and occluded by
+# TODO: integration of map : OpenStreetMap
+# TODO: add output formats, parse and covert
+# refer (https://github.com/eweill/convert-datasets) or something else
+#   - Pascal VOC
+#   - YOLO
+#   - TFrecords
+#   - kitti
+#   - COCO
 
 DEFAULT_LINE_COLOR = QColor(0, 200, 0, 255)
 DEFAULT_FILL_COLOR = QColor(255, 0, 0, 50)
@@ -168,11 +177,11 @@ class Shape(object):
         if self.points:
             color = self.select_line_color \
                 if self.selected else self.line_color
-            pen = QPen()
-            # Try using integer sizes for smoother drawing(?)
-            pen.setWidth(max(1, int(round(2.0 / self.scale))))
+            penwidth = max(1, int(round(2.0 / self.scale)))
+            pen = QPen(color, penwidth, Qt.SolidLine, Qt.RoundCap,
+                        Qt.RoundJoin)
             painter.setPen(pen)
-
+            
             line_path = QPainterPath()
             vrtx_path = QPainterPath()
             ctrx_path = QPainterPath()
@@ -243,7 +252,7 @@ class Shape(object):
                 painter.fillPath(line_path, color)
 
     def drawVertex(self, path, i):
-        d = self.point_size 
+        d = self.point_size/(self.scale*0.7) if self.scale > 1.4 else self.point_size
         shape = self.point_type
         if i == self._highlightIndex:
             size, shape = self._highlightSettings[self._highlightMode]
@@ -650,6 +659,7 @@ class Canvas(QWidget):
                 color = self.current.line_color
                 self.overrideCursor(CURSOR_POINT)
                 self.current.highlightVertex(0, Shape.NEAR_VERTEX)
+                
             if self.createMode in ['polygon', 'polyline']:
                 self.line[0] = self.current[-1]
                 self.line[1] = pos
@@ -836,7 +846,8 @@ class Canvas(QWidget):
                 self.selectShapePoint(pos)
                 self.prevPoint = pos
                 if self.selectedEdge() and not self.selectedVertex():
-                    self.addPointToEdge()
+                    if int(ev.modifiers()) == Qt.ControlModifier:
+                        self.addPointToEdge()
                 self.repaint()
         elif ev.button() == Qt.RightButton and self.editing():
             self.selectShapePoint(pos)
@@ -914,7 +925,7 @@ class Canvas(QWidget):
             return
         elif self.selectedEdge():
             index, shape = self.hEdge, self.hShape
-#            shape.highlightVertex(index, shape.MOVE_EDGE)
+           # shape.highlightVertex(index, shape.MOVE_EDGE)
             self.selectShape(shape)
             return
             
@@ -973,30 +984,31 @@ class Canvas(QWidget):
         
     def boundedMoveEdge(self, pos):
         index, shape = self.hEdge, self.hShape
-        rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
-        w, h = shape.size()
-        point = rectanglePoints[index]
-        if self.outOfPixmap(pos):
-            pos = self.intersectionPoint(point, pos)
-        
-        shiftPos = pos - point
-        shift = None
-        if index == 1:
-            if h + shiftPos.y() >= 10.0:
-               shift = QPointF(0.0, shiftPos.y())
-               shape.moveVertexBy(1, shift)
-        elif index == 0:
-            if h - shiftPos.y() >= 10.0:
-               shift = QPointF(0.0, shiftPos.y())
-               shape.moveVertexBy(0, shift)
-        elif index == 2:
-            if w - shiftPos.x() >= 10.0:
-                shift = QPointF(shiftPos.x(), 0.0)
-                shape.moveVertexBy(0, shift)
-        elif index == 3:
-            if w + shiftPos.x() >= 10.0:
-                shift = QPointF(shiftPos.x(), 0.0)
-                shape.moveVertexBy(1, shift)
+        if shape.shape_type == 'rectangle':
+            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
+            w, h = shape.size()
+            point = rectanglePoints[index]
+            if self.outOfPixmap(pos):
+                pos = self.intersectionPoint(point, pos)
+            
+            shiftPos = pos - point
+            shift = None
+            if index == 1:
+                if h + shiftPos.y() >= 10.0:
+                   shift = QPointF(0.0, shiftPos.y())
+                   shape.moveVertexBy(1, shift)
+            elif index == 0:
+                if h - shiftPos.y() >= 10.0:
+                   shift = QPointF(0.0, shiftPos.y())
+                   shape.moveVertexBy(0, shift)
+            elif index == 2:
+                if w - shiftPos.x() >= 10.0:
+                    shift = QPointF(shiftPos.x(), 0.0)
+                    shape.moveVertexBy(0, shift)
+            elif index == 3:
+                if w + shiftPos.x() >= 10.0:
+                    shift = QPointF(shiftPos.x(), 0.0)
+                    shape.moveVertexBy(1, shift)
 
         
     def boundedMoveShape(self, shape, pos):
@@ -1764,6 +1776,7 @@ class MainWindow(QMainWindow):
             if self.video and  self.video.isOpened():
                 self.video.release()
                 cv2.destroyAllWindows()
+            
             event.accept()
         else:
             event.ignore()
@@ -2310,8 +2323,8 @@ class ImageEditor(QDialog):
     def __init__(self,parent=None):
         super(ImageEditor, self).__init__(parent)
         self.setFixedSize(QSize(300,180))
-        self.setWindowTitle("Image Editor")
-        settingGroup = QGroupBox("Edit Image Settings")
+        self.setWindowTitle("Image Enhancer")
+        settingGroup = QGroupBox("Enhance Image Settings")
         brightnessLabel = QLabel("Brightness :")
         brightness = QSlider(Qt.Horizontal)
         brightness.setRange(0,200)
