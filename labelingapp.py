@@ -31,6 +31,7 @@ __appname__ = 'mylabelingapp'
 __icondir = 'icons'
 __appIcon__ = os.path.join(__icondir,'appicon.png')
 
+# CREDIT: https://github.com/tzutalin/labelImg
 # TODO: occluded and occluded by
 # TODO: integration of map : OpenStreetMap
 # TODO: add output formats, parse and covert
@@ -1545,6 +1546,8 @@ class MainWindow(QMainWindow):
         Close  = action('Close File', self.closeFile,
             'Ctrl+Shift+W', 'close', 'Close File', enabled=False)
         
+        aboutQtAct = action('About &Qt', QApplication.aboutQt)
+        
         delete = action('Delete', self.deleteSelectedShape,
             'Delete', 'delete', 'Delete selected Shape', enabled=False)
         
@@ -1606,7 +1609,7 @@ class MainWindow(QMainWindow):
                               createPolyLineMode=createPolyLineMode,menu=menu,onLoadActive=onLoadActive,
                               shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,
                               Quit=Quit, editMode=editMode, delete=delete, Openfile=Openfile,
-                              Openfolder=Openfolder,undo=undo, Close=Close)
+                              Openfolder=Openfolder,undo=undo, Close=Close, aboutQtAct=aboutQtAct)
         
         self.buttons = struct(fitWindow_button=fitWindow_button,play_button=play_button,
                               previous_button=previous_button,next_button=next_button,
@@ -1661,7 +1664,8 @@ class MainWindow(QMainWindow):
         addActions(fileMenu, [self.actions.Openfile, self.actions.Openfolder, self.actions.Close, self.actions.Quit])
         
         helpmenu = menubar.addMenu('&Help')
-      
+        addActions(helpmenu, [self.actions.aboutQtAct])
+        
         toolbar = QToolBar('Quick Access')
         toolbar.setMaximumHeight(28)
         toolbar.setContentsMargins(0,0,0,0)
@@ -2210,14 +2214,14 @@ class MainWindow(QMainWindow):
 #        self.canvas.undoDeletion()
 #        self.canvas.deSelectShape()
         pass
-        
+       
     def resetState(self):
         self.filePath = None
         self.imageData = None
         self.labelFile = None
         self.canvas.resetState()
         self.labelCoordinates.clear()
-        
+
     def resizeEvent(self, event):
         try:
             if self.canvas and not self.image.isNull()\
@@ -2232,13 +2236,12 @@ class MainWindow(QMainWindow):
             self.canvas.scale = 0.01 * self.zoomWidget.value()
             self.canvas.adjustSize()
             self.canvas.update()
-    
+
     def adjustScale(self, initial=False):
         value = self.scalers[self.FIT_WINDOW if initial else self.zoomMode]()
-        
         self.zoomWidget.setRange(100*self.scalers[self.FIT_WINDOW](),500)
         self.zoomWidget.setValue(100 * value)
-        
+
     def scaleFitWindow(self):
         """Figure out the size of the pixmap in order to fit the main widget."""
         e = 4.0  # So that no scrollbars are generated.
@@ -2255,7 +2258,7 @@ class MainWindow(QMainWindow):
         # The epsilon does not seem to work too well here.
         w = self.scrollArea.width() - 2.0
         return w / self.canvas.pixmap.width()
-    
+
     def scrollRequest(self, delta, orientation):
         units = - delta / (8 * 15)
         bar = self.scrollBars[orientation]
@@ -2263,11 +2266,11 @@ class MainWindow(QMainWindow):
 
     def updateScrollPos(self):
         self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
-        
+
     def setScrollbarPos(self):
         self.scrollBars[Qt.Horizontal].setValue(self.previous_Scroll_pos[0])
         self.scrollBars[Qt.Vertical].setValue(self.previous_Scroll_pos[1])
-        
+
     def setZoom(self, value):
         self.zoomMode = self.MANUAL_ZOOM
         self.zoomWidget.setValue(value)
