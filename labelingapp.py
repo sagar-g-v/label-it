@@ -8,6 +8,7 @@ import os
 import sys
 import cv2
 import copy
+import json
 import math
 import time
 import natsort
@@ -148,7 +149,7 @@ class Shape(object):
             r = self.size()
             return np.pi*(r**2)
         else:
-            assert False,'couldnt find area for this shape'
+            assert False, 'couldnt find area for this shape'
     
     def setOpen(self):
         self._closed = False
@@ -178,7 +179,7 @@ class Shape(object):
         if self.points:
             color = self.select_line_color \
                 if self.selected else self.line_color
-            penwidth = max(1, int(round(2.0 / self.scale)))
+            penwidth = 2.0 / self.scale
             pen = QPen(color, penwidth, Qt.SolidLine, Qt.RoundCap,
                         Qt.RoundJoin)
             painter.setPen(pen)
@@ -298,7 +299,7 @@ class Shape(object):
         pass
     
     def drawControlPoint(self, path, i):
-        d = self.point_size 
+        d = self.point_size/(self.scale*0.7) if self.scale > 1.4 else self.point_size
         shape = self.point_type
         if i == self._highlightContolsIndex:
             size, shape = self._highlightSettings[self._highlightMode]
@@ -498,7 +499,7 @@ class Canvas(QWidget):
     _fill_drawing = False
 
     def __init__(self, *args, **kwargs):
-        self.epsilon = kwargs.pop('epsilon', 11.0)
+        self.epsilon = kwargs.pop('epsilon', 10.0)
         super(Canvas, self).__init__(*args, **kwargs)
         # Initialise local state.
         self.mode = self.EDIT
@@ -1077,9 +1078,9 @@ class Canvas(QWidget):
             return super(Canvas, self).paintEvent(event)        
         p = self._painter
         p.begin(self)
-#        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.HighQualityAntialiasing)
-        p.setRenderHint(QPainter.SmoothPixmapTransform)
+#        p.setRenderHint(QPainter.SmoothPixmapTransform)
 
         p.scale(self.scale, self.scale)
         p.translate(self.offsetToCenter())
@@ -1465,6 +1466,8 @@ class MainWindow(QMainWindow):
         self.zoomWidget = ZoomWidget()
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
         
+#        self.labelwidget = LabelWidget()
+        
         self.imageditor = ImageEditor(parent=self)
         
         scroll = QScrollArea()
@@ -1505,13 +1508,13 @@ class MainWindow(QMainWindow):
         action = functools.partial(newAction,self)
         
         createPolygonMode = action('Polygons', lambda: self.toggleDrawMode(False, createMode='polygon'),
-            'Ctrl+P', 'polygon', 'Start drawing polygons', enabled=False,)
+            'P', 'polygon', 'Start drawing polygons', enabled=False,)
         
         createCubeMode = action('Cuboid', lambda: self.toggleDrawMode(False, createMode='cube'),
             'C', 'cuboid', 'Start drawing Cuboid', enabled=False,)
         
         createRectangleMode = action('Rectangle', lambda: self.toggleDrawMode(False, createMode='rectangle'),
-            'Ctrl+R', 'rectangle', 'Start drawing rectangles', enabled=False,)
+            'R', 'rectangle', 'Start drawing rectangles', enabled=False,)
         
         createCircleMode = action('Circle', lambda: self.toggleDrawMode(False, createMode='circle'),
             'Ctrl+C', 'circle', 'Start drawing circles', enabled=False,)
@@ -1520,14 +1523,14 @@ class MainWindow(QMainWindow):
             'L', 'line', 'Start drawing lines', enabled=False,)
         
         createPointMode = action('Point', lambda: self.toggleDrawMode(False, createMode='point'),
-            'P', 'dot', 'Start drawing points', enabled=False,)
+            'Ctrl+P', 'dot', 'Start drawing points', enabled=False,)
         
         createPolyLineMode = action('PolyLine', lambda: self.toggleDrawMode(False, createMode='polyline'),
             'Ctrl+L', 'polyline', 'Start drawing polyline. Ctrl+LeftClick ends creation.', enabled=False,)
         
         editMode = action('Edit', self.setEditMode,
             'Ctrl+E', 'edit', 'Move and Edit', enabled=False,)
-
+        
         shapeLineColor = action('Line Color', self.chshapeLineColor,
             icon='pen-color', tip='Change the line color for this specific shape', enabled=False)
         
@@ -1537,11 +1540,14 @@ class MainWindow(QMainWindow):
         Quit = action('Quit', self.close, 
             'Ctrl+Q', 'quit', 'Quit application')
         
-        Openfolder  = action('Open Folder', lambda: self.openFile(filetype='folder'), 
-            'Ctrl+Shift+O', 'open-folder', 'Open Folder')
+        Openfolder  = action('Open Image Folder', lambda: self.openFile(filetype='image-folder'), 
+            'Ctrl+Shift+O', 'open-folder', 'Open Image Folder')
         
-        Openfile  = action('Open File', lambda: self.openFile(filetype='file'), 
-            'Ctrl+O', 'open-files', 'Open File')
+        OpenVideofile  = action('Open Video File', lambda: self.openFile(filetype='video-file'),
+            'Ctrl+Shift+V', 'open-video-file', 'Open Video File')
+        
+        OpenImagefile = action('Open Image File', lambda: self.openFile(filetype='image-file'),
+            'Ctrl+Shift+I', 'open-image-file', 'Open Image File')
         
         Close  = action('Close File', self.closeFile,
             'Ctrl+Shift+W', 'close', 'Close File', enabled=False)
@@ -1607,8 +1613,8 @@ class MainWindow(QMainWindow):
                               createCircleMode=createCircleMode,createRectangleMode=createRectangleMode,
                               createLineMode=createLineMode, createPointMode=createPointMode,
                               createPolyLineMode=createPolyLineMode,menu=menu,onLoadActive=onLoadActive,
-                              shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,
-                              Quit=Quit, editMode=editMode, delete=delete, Openfile=Openfile,
+                              shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,OpenImagefile=OpenImagefile,
+                              Quit=Quit, editMode=editMode, delete=delete, OpenVideofile=OpenVideofile,
                               Openfolder=Openfolder,undo=undo, Close=Close, aboutQtAct=aboutQtAct)
         
         self.buttons = struct(fitWindow_button=fitWindow_button,play_button=play_button,
@@ -1661,7 +1667,7 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
         menubar.setMaximumHeight(20)
         fileMenu = menubar.addMenu('&File')
-        addActions(fileMenu, [self.actions.Openfile, self.actions.Openfolder, self.actions.Close, self.actions.Quit])
+        addActions(fileMenu, [self.actions.OpenImagefile, self.actions.OpenVideofile, self.actions.Openfolder, self.actions.Close, self.actions.Quit])
         
         helpmenu = menubar.addMenu('&Help')
         addActions(helpmenu, [self.actions.aboutQtAct])
@@ -1671,11 +1677,9 @@ class MainWindow(QMainWindow):
         toolbar.setContentsMargins(0,0,0,0)
         toolbar.setFloatable(True)
         toolbar.setMovable(False)
-        toolbar.setHidden(True)
+#        toolbar.setHidden(True)
 #        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        toolbar.addAction(self.actions.Openfile)
-        toolbar.addAction(self.actions.Openfolder)
-        toolbar.addAction(self.actions.Quit)
+        addActions(toolbar, [self.actions.OpenImagefile, self.actions.OpenVideofile, self.actions.Openfolder, self.actions.Quit])
         self.addToolBar(toolbar)
         
         self.labelCoordinates = QLabel('')
@@ -1713,36 +1717,44 @@ class MainWindow(QMainWindow):
                                 background-color: white;
                               }
                               QSlider::groove:horizontal {
-                                border: 1px solid lightgray;
+                                border: 1px solid white;
                                 height: 3px;
-                                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 mediumslateblue, stop:1 cornflowerblue);
-                                border-radius: 3px;
+                                background: lightgray;
+                                border-radius: 2px;
                              }
                              QSlider::handle:horizontal {
-                                background: white;
-                                border: 1px solid lightgray;
+                                background: rgba(250,50,50,1.0);
+                                border: none;
                                 width: 8px;
-                                height: 8px;
-                                margin: -8px 0;
+                                height: 6px;
+                                margin: -3px 0px;
                                 border-radius: 4px;
                              }
                              QSlider::handle:horizontal:pressed {
-                                background-color: lightgray;
+                                background-color: white;
                              }
                              QSlider::sub-page:horizontal {
-                                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:1 magenta, stop:0 lightpink);
+                                background: rgba(250,50,50,1.0);
                                 height: 3px;
                                 margin: 1px 0;
-                                border-radius: 3px;
+                                border-radius: 1px;
                              }
                               ''')
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0,0,0,0)
         self.layout.addWidget(self.scrollArea)
         self.layout.addLayout(self.controls)
+        
         window = QWidget()
         window.setLayout(self.layout)
         self.setCentralWidget(window)
+        
+#        self.propertydock = QDockWidget("Property" ,self)
+#        self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
+#        self.propertydock.setFeatures(self.propertydock.features() ^ self.dockFeatures)
+        
+#        self.addDockWidget(Qt.RightDockWidgetArea ,self.propertydock)
+#        self.propertydock.setWidget(self.labelwidget)
         
         self.zoomWidget.setEnabled(False)
         self.frameinfo.setEnabled(False)
@@ -1755,15 +1767,22 @@ class MainWindow(QMainWindow):
     def closeFile(self):
         pass
     
-    def openFile(self,filetype='file'):
-        if filetype == 'file':
-            filename = QFileDialog.getOpenFileName(self, '%s - Open file' % __appname__, '',
-                'Video Files (*.avi;*.mp4);; Image Files (*.jpg; *.jpeg; *.jpe; *.jp2; *.png; *.bmp)')[0]
+    def openFile(self,filetype='video-file'):
+        if filetype == 'video-file':
+            filename = QFileDialog.getOpenFileName(self, '%s - Open video file' % __appname__, '',
+                'Video Files (*.avi;*.mp4)')[0]
             if os.path.isfile(filename):
 #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
                 
-        elif filetype == 'folder':
+        elif filetype == 'image-file':
+            filename = QFileDialog.getOpenFileName(self, '%s - Open image file' % __appname__, '',
+                'Image Files (*.jpg; *.jpeg; *.jpe; *.jp2; *.png; *.bmp)')[0]
+            if os.path.isfile(filename):
+#                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
+                self.loadFile(os.path.abspath(filename))
+            
+        elif filetype == 'image-folder':
             targetDirPath = str(QFileDialog.getExistingDirectory(
                     self, '%s - Open Folder' % __appname__,'',
                     QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
@@ -1839,6 +1858,7 @@ class MainWindow(QMainWindow):
             assert False, "unsupported filetype"
         
         name,ext = os.path.splitext(os.path.split(file)[1])
+        compatible_file_formats = compatible_file_formats + [file_format.upper() for file_format in compatible_file_formats]
         if ext in compatible_file_formats:
             return True
         return False
@@ -1945,16 +1965,17 @@ class MainWindow(QMainWindow):
             self.setControlsHidden(True)
             self.frameUpdated.emit(0, 1)
 #            self.videoslider.setHidden(True)
-            QMessageBox.warning(self, 'Warning', "Selected Folder does not contain supported files")
+            QMessageBox.warning(self, 'Warning', "No images found")
         self.loadPixmapToCanvas()
         self.paintCanvas()
         
     def loadPixmapToCanvas(self):
         self.canvas.loadPixmap(QPixmap.fromImage(self.image))
+        print(self.image.height()*self.image.width()/100)
         if not self.image.isNull():
             self.toggleActions(True)
             value = self.scalers[self.FIT_WINDOW]()
-            self.zoomWidget.setRange(100*value,500)
+            self.zoomWidget.setRange(100*value,self.zoomWidget.maximum())
         else:
             self.toggleActions(False)
             
@@ -2234,12 +2255,13 @@ class MainWindow(QMainWindow):
     def paintCanvas(self):
         if not self.image.isNull():
             self.canvas.scale = 0.01 * self.zoomWidget.value()
+            self.canvas.epsilon = 10.0 /self.canvas.scale
             self.canvas.adjustSize()
             self.canvas.update()
 
     def adjustScale(self, initial=False):
         value = self.scalers[self.FIT_WINDOW if initial else self.zoomMode]()
-        self.zoomWidget.setRange(100*self.scalers[self.FIT_WINDOW](),500)
+        self.zoomWidget.setRange(100*self.scalers[self.FIT_WINDOW](),self.zoomWidget.maximum())
         self.zoomWidget.setValue(100 * value)
 
     def scaleFitWindow(self):
@@ -2281,11 +2303,16 @@ class MainWindow(QMainWindow):
     @Slot(int, QPoint)
     def zoomRequest(self, delta,pos):
         canvas_width_old = self.canvas.width()
-        units = 10
+        units = 1
         if delta < 0 :
-            units = -1*units
-        self.addZoom(units)
-
+            units = -1
+        
+        step = (self.zoomWidget.value() - self.zoomWidget.minimum())/10 if not self.zoomWidget.value() == self.zoomWidget.minimum() else 10
+        print(step)
+        self.addZoom(units*step)
+    
+#        self.zoomWidget.setSingleStep(step)
+        
         canvas_width_new = self.canvas.width()
         if canvas_width_old != canvas_width_new:
             canvas_scale_factor = canvas_width_new / canvas_width_old
@@ -2308,7 +2335,7 @@ class ZoomWidget(QSpinBox):
     def __init__(self, value=100):
         super(ZoomWidget, self).__init__()
 #        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        self.setRange(1, 500)
+        self.setRange(1, 10000)
         self.setSingleStep(20)
         self.setSuffix(' %')
         self.setValue(value)
@@ -2321,69 +2348,109 @@ class ZoomWidget(QSpinBox):
         fm = QFontMetrics(self.font())
         width = fm.width(str(self.maximum()))
         return QSize(width, height)
+
+class LabelWidget(QWidget):
+    
+    labelUpdated = Signal(dict)
+    
+    def __init__(self,*args, **kwargs):
+        self.property_type = kwargs.pop('property_type', 'bbox')
+        super(LabelWidget, self).__init__(*args, **kwargs)
+        self.objectclass = dict()
+        self.loadLabels()
+        self.temp = []
+        self.Id = None
+        self.initWidget()
         
+    def initWidget(self):
+        self.maingrid = QGridLayout()
+        self.populateGrid(self.maingrid,self.objectclass)
+        self.Layout = QVBoxLayout()
+        self.Layout.addLayout(self.maingrid)
+        self.setLayout(self.Layout)
+#        self.setFixedSize(self.sizeHint())
+
+    def populateGrid(self, gridlayout, sourcedict):
+        for i, items in  enumerate(sourcedict.items()):
+            mainclass, values = items
+            subclass = [list(value)[0] for value in values]
+            gridlayout.addWidget(QLabel(mainclass), i, 0)
+            cbox = QComboBox()
+            cbox.currentTextChanged.connect(lambda:self.populatelayerOne(gridlayout, values))
+            cbox.addItems(subclass)
+            gridlayout.addWidget(cbox, i,1)
+    
+    def populatelayerOne(self, gridlayout, sourcedict):
+        sender = self.sender()
+        selectionIndex = sender.currentIndex()
+        selectionText = sender.currentText()
+        count, row, col = gridlayout.count(), gridlayout.rowCount(), gridlayout.columnCount()
+        for i in range(1,row):
+            for j in range(1,col):
+                item = gridlayout.itemAtPosition(i,j)
+                item.widget()
+        for i,items in enumerate(sourcedict[selectionIndex][selectionText].items()):
+            subsel, values = items
+            row = gridlayout.rowCount()
+            print(subsel, list(values))
+            name = QLabel(subsel)
+            gridlayout.addWidget(name, row, 1)
+            cbox = QComboBox()
+            cbox.currentTextChanged.connect(lambda:self.populatelayerTwo(gridlayout, values))
+            cbox.addItems(values)
+            gridlayout.addWidget(cbox, row,2)
+            self.temp.append(name)
+            self.temp.append(cbox)
+    
+    def populatelayerTwo(self, gridlayout, sourcedict):
+        sender = self.sender()
+        selectionIndex = sender.currentIndex()
+        selectionText = sender.currentText()
+    
+    def loadLabels(self):
+        if self.property_type == 'bbox':
+            with open("labels/object_labels.json") as json_file:
+                self.objectclass = json.load(json_file)
+
 class ImageEditor(QDialog):
     def __init__(self,parent=None):
         super(ImageEditor, self).__init__(parent)
         self.setFixedSize(QSize(300,180))
         self.setWindowTitle("Image Enhancer")
         settingGroup = QGroupBox("Enhance Image Settings")
-        brightnessLabel = QLabel("Brightness :")
-        brightness = QSlider(Qt.Horizontal)
-        brightness.setRange(0,200)
-        brightness.setValue(100)
-        brightness.setTickPosition(QSlider.TicksBelow)
-        brightness.setTickInterval(100)
-        brightness.valueChanged.connect(self.updateSettings)
         
-        contrastLabel = QLabel("Contrast :")
-        contrast = QSlider(Qt.Horizontal)
-        contrast.setRange(0,200)
-        contrast.setValue(100)
-        contrast.setTickPosition(QSlider.TicksBelow)
-        contrast.setTickInterval(100)
-        contrast.valueChanged.connect(self.updateSettings)
+        brightnessLabel, brightness = QLabel("Brightness :"), QSlider(Qt.Horizontal)        
+        contrastLabel, contrast = QLabel("Contrast :"), QSlider(Qt.Horizontal)  
+        sharpnessLabel, sharpness = QLabel("Sharpness :"), QSlider(Qt.Horizontal)
+        colorLabel, color = QLabel("Color :"), QSlider(Qt.Horizontal)
         
-        sharpnessLabel = QLabel("Sharpness :")
-        sharpness = QSlider(Qt.Horizontal)
-        sharpness.setRange(0,200)
-        sharpness.setValue(100)
-        sharpness.setTickPosition(QSlider.TicksBelow)
-        sharpness.setTickInterval(100)
-        sharpness.valueChanged.connect(self.updateSettings)
+        for slider,slot in zip([brightness,contrast,sharpness, color], [self.updateSettings]*4):
+            self.setSliderProperty(slider, slot)
+
+        restorebutton = newButton(self, '&Restore Defaults', self.restore, None,
+                                  None, 'restore', style=Qt.ToolButtonTextBesideIcon)
         
-        colorLabel = QLabel("Color :")
-        color = QSlider(Qt.Horizontal)
-        color.setRange(0,200)
-        color.setValue(100)
-        color.setTickPosition(QSlider.TicksBelow)
-        color.setTickInterval(100)
-        color.valueChanged.connect(self.updateSettings)
-        
-        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color)
-        
-        restorebutton = newButton(self,'&Restore Defaults',self.restore,None, '',
-                           'restore',style=Qt.ToolButtonTextBesideIcon)
-        
-        settinglayout = QGridLayout()
-        settinglayout.addWidget(brightnessLabel,0,0)
-        settinglayout.addWidget(self.settings.brightness,0,1)        
-        settinglayout.addWidget(contrastLabel,1,0)
-        settinglayout.addWidget(self.settings.contrast,1,1)
-        settinglayout.addWidget(sharpnessLabel,2,0)
-        settinglayout.addWidget(self.settings.sharpness,2,1)
-        settinglayout.addWidget(colorLabel,3,0)
-        settinglayout.addWidget(self.settings.color,3,1)
-        settingGroup.setLayout(settinglayout)
+        self.settinglayout = QGridLayout()
+        addWidgets(self.settinglayout, [(brightnessLabel,0,0), (brightness,0,1),
+                                   (contrastLabel,1,0), (contrast,1,1),
+                                   (sharpnessLabel,2,0), (sharpness,2,1),
+                                   (colorLabel,3,0), (color,3,1)])
+        settingGroup.setLayout(self.settinglayout)
         
         layout = QVBoxLayout()
-        layout.addWidget(settingGroup)
-        layout.addWidget(restorebutton)
+        addWidgets(layout, [settingGroup,restorebutton])
+        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color)
         self.setLayout(layout)
-    
+        
+    def setSliderProperty(self,slider, slot):
+        slider.setRange(0,200)
+        slider.setValue(100)
+        slider.setTickPosition(QSlider.TicksBelow)
+        slider.setTickInterval(100)
+        slider.valueChanged.connect(slot)
+        
     @Slot()
     def updateSettings(self):
-        window = self.parent().window()
         image = window.cvimage
         
         if image is None:
@@ -2405,13 +2472,13 @@ class ImageEditor(QDialog):
         window.image = ImageQt.ImageQt(pilimage)
         window.loadPixmapToCanvas()
         window.canvas.loadShapes(shapes)
-    
+        
     def restore(self):
         self.settings.brightness.setValue(100)
         self.settings.contrast.setValue(100)
         self.settings.sharpness.setValue(100)
         self.settings.color.setValue(100)
-
+        
 class ColorDialog(QColorDialog):
     def __init__(self, parent=None):
         super(ColorDialog, self).__init__(parent)
@@ -2442,7 +2509,9 @@ class ColorDialog(QColorDialog):
 class struct(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
-
+    
+    def __getitem__(self, key):
+        return self.__dict__[key]
 
 def newButton(parent, text, slot=None, shortcut=None, icon=None,
               tip=None, checkable=False, enabled=True,stylesheet=None,
@@ -2516,6 +2585,13 @@ def addActions(widget, actions):
             widget.addMenu(action)
         else:
             widget.addAction(action)
+
+def addWidgets(layout, widgets):
+    for widget in widgets:
+        if isinstance(layout, QGridLayout):
+            layout.addWidget(widget[0],*widget[1:])
+        elif isinstance(widget, QWidget):
+            layout.addWidget(widget)
 
 def newIcon(icon):
     return QIcon(os.path.join(__icondir,'%s.png' % icon))

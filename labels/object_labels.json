@@ -1,0 +1,30 @@
+{
+	"Object Class":[
+		{
+			"Vehicles":{
+				"Sub Class":{
+					"Commercial‎":["Car", "Bus", "Truck", "Unicycle", "Biclycle", "Tricycle", "Motorbike", "Scooter", "Moped", "Autorickshaw"],
+					"Engineering":["Bulldozers", "Cranes", "Dump truck", "Excavating equipment‎", "JCB", "Military vehicles", "Tractors‎"],
+					"Emergency":["Ambulance", "Fire service vehicle", "Fireboat‎", "Police vehicle‎", "Tow truck‎"]
+				},
+				"Orientation":["Front", "Rear", "Left", "Right", "Front-Left", "Front-Right", "Rear-Left", "Rear-Right"],
+				"Indicators":{"Break":["On", "Off"], "Left":["On", "Off"], "Right":["On", "Off"]}
+			}
+		},
+		{
+			"Person":{
+				"Sub Class":{
+					"Pedestrian":{"Age":["Adult", "Child"]},
+					"Other":["Cyclist","Motorbike Rider"]
+				},
+				"Orientation":["Front", "Rear", "Left", "right"],
+				"Belongings":["None","Backpack", "Handbag","Other"]
+			}
+		},
+		{
+			"Road":{
+				"Sub Class":{}
+			}
+		}
+	]
+}
