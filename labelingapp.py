@@ -179,7 +179,7 @@ class Shape(object):
         if self.points:
             color = self.select_line_color \
                 if self.selected else self.line_color
-            penwidth = 2.0 / self.scale
+            penwidth = round(2.0 / self.scale)
             pen = QPen(color, penwidth, Qt.SolidLine, Qt.RoundCap,
                         Qt.RoundJoin)
             painter.setPen(pen)
@@ -531,6 +531,7 @@ class Canvas(QWidget):
         self.hEdge = None
         self.hCpoint = None
         self.movingShape = False
+        self.smoothimage = False
         self._painter = QPainter()
         self._cursor = CURSOR_DEFAULT
         # Menus:
@@ -730,7 +731,7 @@ class Canvas(QWidget):
             index, eindex, cindex = None, None, None
             index = shape.nearestVertex(pos, self.epsilon)
             eindex = shape.nearestEdge(pos, self.epsilon)
-            cindex = shape.nearestControlPoint(pos, self.epsilon+10)
+            cindex = shape.nearestControlPoint(pos, 2*self.epsilon)
             
             if index is not None:
                 if self.selectedVertex():
@@ -991,6 +992,7 @@ class Canvas(QWidget):
             w, h = shape.size()
             point = rectanglePoints[index]
             if self.outOfPixmap(pos):
+                #ERROR:self.canvas.scale when trying to move edge out of image
                 pos = self.intersectionPoint(point, pos)
             
             shiftPos = pos - point
@@ -1080,8 +1082,8 @@ class Canvas(QWidget):
         p.begin(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setRenderHint(QPainter.HighQualityAntialiasing)
-#        p.setRenderHint(QPainter.SmoothPixmapTransform)
-
+        if self.smoothimage:
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
         p.scale(self.scale, self.scale)
         p.translate(self.offsetToCenter())
 
@@ -1128,7 +1130,7 @@ class Canvas(QWidget):
         # and draw text
         p.setFont(QFont('Consolas', 20,10))
         p.setPen(QPen(QColor(140,140,140)))
-        p.drawText((-1*defaultPixmap.width()/2)-10,(defaultPixmap.height()/2)+10,'empty :(')
+        p.drawText((-1*defaultPixmap.width()/2)-10,(defaultPixmap.height()/2)+20,'empty :(')
         
     def transformPos(self, point):
         """Convert from widget-logical coordinates to painter-logical ones."""
@@ -1316,6 +1318,9 @@ class Canvas(QWidget):
                 self.moveOnePixel('upEOut')
             elif key == Qt.Key_Down and self.selectedShape:
                 self.moveOnePixel('downEOut')
+            if key == Qt.Key_T:
+                self.smoothimage = not self.smoothimage
+                self.update()
         elif (Qt.ControlModifier|Qt.ShiftModifier) == mods:
             #print("Ctrl+Shift pressed")
             if key == Qt.Key_Left and self.selectedShape:
@@ -1650,6 +1655,36 @@ class MainWindow(QMainWindow):
         self.videoslider.setTickPosition(QSlider.TicksBelow)
         self.videoslider.setTickInterval(1)
         self.videoslider.valueChanged.connect(self.loadFrame)
+        self.videoslider.setStyleSheet(''' 
+                             QStatusBar::separator{
+                                background-color: white;
+                              }
+                              QSlider::groove:horizontal {
+                                border: 1px solid white;
+                                height: 3px;
+                                background: lightgray;
+                                border-radius: 2px;
+                             }
+                             QSlider::handle:horizontal {
+                                background: rgba(250,50,50,1.0);
+                                border: none;
+                                width: 8px;
+                                height: 6px;
+                                margin: -3px 0px;
+                                border-radius: 4px;
+                             }
+                             QSlider::handle:horizontal:pressed {
+                                background-color: white;
+                             }
+                             QSlider::handle:horizontal:hover {
+                                background-color: white;
+                             }
+                             QSlider::sub-page:horizontal {
+                                background: rgba(250,50,50,1.0);
+                                height: 3px;
+                                margin: 1px 0;
+                                border-radius: 1px;
+                             }''')
         self.videoslider.setHidden(True)
         
         self.controls = QHBoxLayout()      
@@ -1713,32 +1748,6 @@ class MainWindow(QMainWindow):
                                 background-color: white;
                                 color: black;
                               }
-                              QStatusBar::separator{
-                                background-color: white;
-                              }
-                              QSlider::groove:horizontal {
-                                border: 1px solid white;
-                                height: 3px;
-                                background: lightgray;
-                                border-radius: 2px;
-                             }
-                             QSlider::handle:horizontal {
-                                background: rgba(250,50,50,1.0);
-                                border: none;
-                                width: 8px;
-                                height: 6px;
-                                margin: -3px 0px;
-                                border-radius: 4px;
-                             }
-                             QSlider::handle:horizontal:pressed {
-                                background-color: white;
-                             }
-                             QSlider::sub-page:horizontal {
-                                background: rgba(250,50,50,1.0);
-                                height: 3px;
-                                margin: 1px 0;
-                                border-radius: 1px;
-                             }
                               ''')
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0,0,0,0)
@@ -1971,7 +1980,6 @@ class MainWindow(QMainWindow):
         
     def loadPixmapToCanvas(self):
         self.canvas.loadPixmap(QPixmap.fromImage(self.image))
-        print(self.image.height()*self.image.width()/100)
         if not self.image.isNull():
             self.toggleActions(True)
             value = self.scalers[self.FIT_WINDOW]()
@@ -2223,7 +2231,12 @@ class MainWindow(QMainWindow):
 #            print("hhh")
         
     def shapeMoved(self):
-        pass
+        for shape in self.canvas.shapes:
+            points = shape.points
+            pts = []
+            for point in points:
+                pts.append([point.x(), point.y()])
+            print(pts)
         
     def deleteSelectedShape(self):
         deletedShape = self.canvas.deleteSelected()
@@ -2255,7 +2268,7 @@ class MainWindow(QMainWindow):
     def paintCanvas(self):
         if not self.image.isNull():
             self.canvas.scale = 0.01 * self.zoomWidget.value()
-            self.canvas.epsilon = 10.0 /self.canvas.scale
+            self.canvas.epsilon = 10.0 /self.canvas.scale if self.canvas.scale >= 1.0 else 10.0
             self.canvas.adjustSize()
             self.canvas.update()
 
@@ -2306,9 +2319,10 @@ class MainWindow(QMainWindow):
         units = 1
         if delta < 0 :
             units = -1
+        step = 10
+        if not self.zoomWidget.value() == self.zoomWidget.minimum():
+            step = (self.zoomWidget.value() - self.zoomWidget.minimum())/10
         
-        step = (self.zoomWidget.value() - self.zoomWidget.minimum())/10 if not self.zoomWidget.value() == self.zoomWidget.minimum() else 10
-        print(step)
         self.addZoom(units*step)
     
 #        self.zoomWidget.setSingleStep(step)
@@ -2423,8 +2437,9 @@ class ImageEditor(QDialog):
         contrastLabel, contrast = QLabel("Contrast :"), QSlider(Qt.Horizontal)  
         sharpnessLabel, sharpness = QLabel("Sharpness :"), QSlider(Qt.Horizontal)
         colorLabel, color = QLabel("Color :"), QSlider(Qt.Horizontal)
+        edgelabel, edge = QLabel("Edge :"), QSlider(Qt.Horizontal)
         
-        for slider,slot in zip([brightness,contrast,sharpness, color], [self.updateSettings]*4):
+        for slider,slot in zip([brightness,contrast,sharpness, color, edge], [self.updateSettings]*5):
             self.setSliderProperty(slider, slot)
 
         restorebutton = newButton(self, '&Restore Defaults', self.restore, None,
@@ -2434,12 +2449,12 @@ class ImageEditor(QDialog):
         addWidgets(self.settinglayout, [(brightnessLabel,0,0), (brightness,0,1),
                                    (contrastLabel,1,0), (contrast,1,1),
                                    (sharpnessLabel,2,0), (sharpness,2,1),
-                                   (colorLabel,3,0), (color,3,1)])
+                                   (colorLabel,3,0), (color,3,1), (edgelabel,4,0), (edge,4,1)])
         settingGroup.setLayout(self.settinglayout)
         
         layout = QVBoxLayout()
         addWidgets(layout, [settingGroup,restorebutton])
-        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color)
+        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color, edge=edge)
         self.setLayout(layout)
         
     def setSliderProperty(self,slider, slot):
@@ -2460,8 +2475,16 @@ class ImageEditor(QDialog):
         contrastvalue = self.settings.contrast.value()
         sharpnessvalue = self.settings.sharpness.value()
         colorvalue = self.settings.color.value()
+        edgevalue = (255*self.settings.edge.value()/200)
         
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if not int(edgevalue) == 127:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            image = cv2.medianBlur(image,5)
+            image = cv2.Canny(gray,127,edgevalue)
+            image  = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        
+        
         pilimage = Image.fromarray(image)
         pilimage = ImageEnhance.Brightness(pilimage).enhance(brightnesvalue/100)
         pilimage = ImageEnhance.Contrast(pilimage).enhance(contrastvalue/100)
@@ -2478,6 +2501,7 @@ class ImageEditor(QDialog):
         self.settings.contrast.setValue(100)
         self.settings.sharpness.setValue(100)
         self.settings.color.setValue(100)
+        self.settings.edge.setValue(100)
         
 class ColorDialog(QColorDialog):
     def __init__(self, parent=None):
