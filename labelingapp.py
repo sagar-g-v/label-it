@@ -13,6 +13,7 @@ import math
 import time
 import natsort
 import hashlib
+import platform
 import functools
 import numpy as np
 import pandas as pd
@@ -1451,7 +1452,7 @@ class MainWindow(QMainWindow):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
     frameUpdated = Signal(int, int)
     
-    def __init__(self, defaultFilename=None, defaultPrefdefClassFile=None, defaultSaveDir=None):
+    def __init__(self, platformName, defaultFilename=None, defaultPrefdefClassFile=None, defaultSaveDir=None):
         super(MainWindow, self).__init__()
         self.setWindowTitle(__appname__)
         self.setWindowIcon(QIcon(__appIcon__))
@@ -1639,11 +1640,6 @@ class MainWindow(QMainWindow):
         self.frameinfo.setAlignment(Qt.AlignCenter)
         self.frameinfo.setSuffix(' / 0')
         self.frameinfo.setStatusTip('Go to a frame')
-        self.frameinfo.setStyleSheet('''
-                                     QSpinBox{
-                                     border-radius:2px;
-                                     }
-                                     ''')
         self.frameinfo.valueChanged.connect(self.loadFrame)
         
         self.skipstep = QSpinBox()
@@ -1802,14 +1798,14 @@ class MainWindow(QMainWindow):
     def openFile(self, filetype='video-file'):
         if filetype == 'video-file':
             filename = QFileDialog.getOpenFileName(self, '%s - Open video file' % __appname__, '',
-                'Video Files (*.avi;*.mp4)')[0]
+                'Video Files (*.avi *.mp4)',None, QFileDialog.DontUseNativeDialog)[0]
             if os.path.isfile(filename):
 #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
                 
         elif filetype == 'image-file':
             filename = QFileDialog.getOpenFileName(self, '%s - Open image file' % __appname__, '',
-                'Image Files (*.jpg; *.jpeg; *.jpe; *.jp2; *.png; *.bmp, *.tif, *.tiff)')[0]
+                'Image Files (*.jpg *.jpeg *.jpe *.jp2 *.png *.bmp *.tif *.tiff)')[0]
             if os.path.isfile(filename):
 #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
@@ -2684,7 +2680,8 @@ def readCSS(fname):
   
 #print(Canvas.__mro__)
 if __name__ == '__main__':
+    platformName = platform.system()
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow(platformName = platformName)
     window.show()
     sys.exit(app.exec_())
