@@ -859,13 +859,13 @@ class Canvas(QWidget):
 
     def mouseReleaseEvent(self, ev):
         if ev.button() == Qt.RightButton:
-            menu = self.menus[bool(self.selectedShapeCopy)]
+#            menu = self.menus[bool(self.selectedShapeCopy)]
             self.restoreCursor()
-            if not menu.exec_(self.mapToGlobal(ev.pos()))\
-               and self.selectedShapeCopy:
-                # Cancel the move by deleting the shadow copy.
-                self.selectedShapeCopy = None
-                self.repaint()
+#            if not menu.exec_(self.mapToGlobal(ev.pos()))\
+#               and self.selectedShapeCopy:
+#                # Cancel the move by deleting the shadow copy.
+#                self.selectedShapeCopy = None
+#                self.repaint()
         elif ev.button() == Qt.LeftButton and self.selectedShape:
             self.overrideCursor(CURSOR_GRAB)
         if self.movingShape:
@@ -984,7 +984,7 @@ class Canvas(QWidget):
             if self.outOfPixmap(pos):
                 pos = self.intersectionPoint(point, pos)
             shape.moveVertexBy(index, pos - point)
-        
+
     def boundedMoveEdge(self, pos):
         index, shape = self.hEdge, self.hShape
         if shape.shape_type == 'rectangle':
@@ -1013,8 +1013,7 @@ class Canvas(QWidget):
                 if w + shiftPos.x() >= 10.0:
                     shift = QPointF(shiftPos.x(), 0.0)
                     shape.moveVertexBy(1, shift)
-
-        
+  
     def boundedMoveShape(self, shape, pos):
         if self.outOfPixmap(pos):
             return False  # No need to move
@@ -1508,39 +1507,9 @@ class MainWindow(QMainWindow):
         self.fillColor = None
         self.play_status = False
         self.skipStepValue = int()
-        self.previous_Scroll_pos = None
+        self.previous_Scroll_pos = None        
         
         action = functools.partial(newAction,self)
-        
-        createPolygonMode = action('Polygons', lambda: self.toggleDrawMode(False, createMode='polygon'),
-            'P', 'polygon', 'Start drawing polygons', enabled=False,)
-        
-        createCubeMode = action('Cuboid', lambda: self.toggleDrawMode(False, createMode='cube'),
-            'C', 'cuboid', 'Start drawing Cuboid', enabled=False,)
-        
-        createRectangleMode = action('Rectangle', lambda: self.toggleDrawMode(False, createMode='rectangle'),
-            'R', 'rectangle', 'Start drawing rectangles', enabled=False,)
-        
-        createCircleMode = action('Circle', lambda: self.toggleDrawMode(False, createMode='circle'),
-            'Ctrl+C', 'circle', 'Start drawing circles', enabled=False,)
-        
-        createLineMode = action('Line', lambda: self.toggleDrawMode(False, createMode='line'),
-            'L', 'line', 'Start drawing lines', enabled=False,)
-        
-        createPointMode = action('Point', lambda: self.toggleDrawMode(False, createMode='point'),
-            'Ctrl+P', 'dot', 'Start drawing points', enabled=False,)
-        
-        createPolyLineMode = action('PolyLine', lambda: self.toggleDrawMode(False, createMode='polyline'),
-            'Ctrl+L', 'polyline', 'Start drawing polyline. Ctrl+LeftClick ends creation.', enabled=False,)
-        
-        editMode = action('Edit', self.setEditMode,
-            'Ctrl+E', 'edit', 'Move and Edit', enabled=False,)
-        
-        shapeLineColor = action('Line Color', self.chshapeLineColor,
-            icon='pen-color', tip='Change the line color for this specific shape', enabled=False)
-        
-        shapeFillColor = action('Fill Color', self.chshapeFillColor, 
-            icon='fill-color', tip='Change the fill color for this specific shape', enabled=False)
         
         Quit = action('Quit', self.close, 
             'Ctrl+Q', 'quit', 'Quit application')
@@ -1557,18 +1526,49 @@ class MainWindow(QMainWindow):
         Close  = action('Close File', self.closeFile,
             'Ctrl+Shift+W', 'close', 'Close File', enabled=False)
         
-        aboutQtAct = action('About &Qt', QApplication.aboutQt)
-        
-        delete = action('Delete', self.deleteSelectedShape,
-            'Delete', 'delete', 'Delete selected Shape', enabled=False)
-        
-        undo = action('Undo', self.undoDeletetion,
-            'Ctrl+Z', 'undo', 'Undo', enabled=False)
-        
-        imagedit = action('image setting', self.openImagEditor,
-            icon='image-setting', tip='Edit image', enabled=False)
+        aboutqtact = action('About &Qt', QApplication.aboutQt)
         
         button = functools.partial(newButton,self)
+        
+        createPolygonMode = button('Polygons', lambda: self.toggleDrawMode(False, createMode='polygon'),
+            'P', 'polygon', 'Start drawing polygons', enabled=False,)
+        
+        createCubeMode = button('Cuboid', lambda: self.toggleDrawMode(False, createMode='cube'),
+            'C', 'cuboid', 'Start drawing Cuboid', enabled=False,)
+        
+        createRectangleMode = button('Rectangle', lambda: self.toggleDrawMode(False, createMode='rectangle'),
+            'R', 'rectangle', 'Start drawing rectangles', enabled=False,)
+        
+        createCircleMode = button('Circle', lambda: self.toggleDrawMode(False, createMode='circle'),
+            'Ctrl+C', 'circle', 'Start drawing circles', enabled=False,)
+        
+        createLineMode = button('Line', lambda: self.toggleDrawMode(False, createMode='line'),
+            'L', 'line', 'Start drawing lines', enabled=False,)
+        
+        createPointMode = button('Point', lambda: self.toggleDrawMode(False, createMode='point'),
+            'Ctrl+P', 'dot', 'Start drawing points', enabled=False,)
+        
+        createPolyLineMode = button('PolyLine', lambda: self.toggleDrawMode(False, createMode='polyline'),
+            'Ctrl+L', 'polyline', 'Start drawing polyline. Ctrl+LeftClick ends creation.', enabled=False,)
+        
+        editMode = button('Edit', self.setEditMode,
+            'Ctrl+E', 'edit', 'Move and Edit', enabled=False,)
+        
+        shapeLineColor = button('Line Color', self.chshapeLineColor,
+            icon='pen-color', tip='Change the line color for this specific shape', enabled=False)
+        
+        shapeFillColor = button('Fill Color', self.chshapeFillColor, 
+            icon='fill-color', tip='Change the fill color for this specific shape', enabled=False)
+        
+        delete = button('Delete', self.deleteSelectedShape,
+            'Delete', 'delete', 'Delete selected Shape', enabled=False)
+        
+        undo = button('Undo', self.undoDeletetion,
+            'Ctrl+Z', 'undo', 'Undo', enabled=False)
+        
+        imagedit = button('image setting', self.openImagEditor,
+            icon='image-setting', tip='Edit image', enabled=False)
+        
         fitWindow_button = button('&Fit-To-Canvas', self.setFitWindow,'Tab', 'expand',
                            'Fit to canvas size',style=Qt.ToolButtonTextBesideIcon, checkable=True, enabled=False)
         
@@ -1587,7 +1587,7 @@ class MainWindow(QMainWindow):
         full_screen = button('&Go full screen', self.toggleFullscreen,'Ctrl+Tab' ,'full-screen',
                              'Go full screen',)
 
-        menu=(
+        menu =(
             createRectangleMode,
             createPolyLineMode,
             createPolygonMode,
@@ -1602,7 +1602,8 @@ class MainWindow(QMainWindow):
             undo,
             imagedit,
         )
-        onLoadActive=(
+        
+        onLoadActive =(
             Close,
             createPolygonMode,
             createRectangleMode,
@@ -1614,21 +1615,23 @@ class MainWindow(QMainWindow):
             editMode,
             imagedit,  
         )
-        self.actions = struct(createCubeMode=createCubeMode,createPolygonMode=createPolygonMode,
-                              createCircleMode=createCircleMode,createRectangleMode=createRectangleMode,
-                              createLineMode=createLineMode, createPointMode=createPointMode,
-                              createPolyLineMode=createPolyLineMode,menu=menu,onLoadActive=onLoadActive,
-                              shapeLineColor=shapeLineColor,shapeFillColor=shapeFillColor,OpenImagefile=OpenImagefile,
-                              Quit=Quit, editMode=editMode, delete=delete, OpenVideofile=OpenVideofile,
-                              Openfolder=Openfolder,undo=undo, Close=Close, aboutQtAct=aboutQtAct)
         
-        self.buttons = struct(fitWindow_button=fitWindow_button,play_button=play_button,
-                              previous_button=previous_button,next_button=next_button,
-                              usePrevious_botton=usePrevious_botton,full_screen=full_screen)
+        self.actions = struct(
+                OpenImagefile=OpenImagefile, Quit=Quit, 
+                OpenVideofile=OpenVideofile, Openfolder=Openfolder, Close=Close,
+                aboutqtact=aboutqtact, onLoadActive=onLoadActive
+                )
         
-        addActions(self.canvas.menus[0], self.actions.menu)
-        addActions(self.canvas, self.actions.menu)
-#        self.canvas.edgeSelected.connect()
+        self.buttons = struct(
+                createCubeMode=createCubeMode, createPolygonMode=createPolygonMode,
+                createCircleMode=createCircleMode, createRectangleMode=createRectangleMode,
+                createLineMode=createLineMode, createPointMode=createPointMode,
+                createPolyLineMode=createPolyLineMode, menu=menu, editMode=editMode,
+                shapeLineColor=shapeLineColor, shapeFillColor=shapeFillColor,
+                fitWindow_button=fitWindow_button, play_button=play_button, delete=delete,
+                previous_button=previous_button, next_button=next_button, undo=undo,
+                usePrevious_botton=usePrevious_botton, full_screen=full_screen
+                )
         
         self.frameinfo = QSpinBox()
         self.frameinfo.setSingleStep(1)
@@ -1636,6 +1639,11 @@ class MainWindow(QMainWindow):
         self.frameinfo.setAlignment(Qt.AlignCenter)
         self.frameinfo.setSuffix(' / 0')
         self.frameinfo.setStatusTip('Go to a frame')
+        self.frameinfo.setStyleSheet('''
+                                     QSpinBox{
+                                     border-radius:2px;
+                                     }
+                                     ''')
         self.frameinfo.valueChanged.connect(self.loadFrame)
         
         self.skipstep = QSpinBox()
@@ -1687,7 +1695,7 @@ class MainWindow(QMainWindow):
                              }''')
         self.videoslider.setHidden(True)
         
-        self.controls = QHBoxLayout()      
+        self.controls = QHBoxLayout()
         self.controls.setContentsMargins(0,0,5,0)
         self.controls.setAlignment(Qt.AlignLeft)
         
@@ -1702,10 +1710,11 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
         menubar.setMaximumHeight(20)
         fileMenu = menubar.addMenu('&File')
-        addActions(fileMenu, [self.actions.OpenImagefile, self.actions.OpenVideofile, self.actions.Openfolder, self.actions.Close, self.actions.Quit])
+        addActions(fileMenu, [self.actions.OpenImagefile, self.actions.OpenVideofile,
+                              self.actions.Openfolder, self.actions.Close, self.actions.Quit])
         
         helpmenu = menubar.addMenu('&Help')
-        addActions(helpmenu, [self.actions.aboutQtAct])
+        addActions(helpmenu, [self.actions.aboutqtact])
         
         toolbar = QToolBar('Quick Access')
         toolbar.setMaximumHeight(28)
@@ -1714,7 +1723,8 @@ class MainWindow(QMainWindow):
         toolbar.setMovable(False)
 #        toolbar.setHidden(True)
 #        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        addActions(toolbar, [self.actions.OpenImagefile, self.actions.OpenVideofile, self.actions.Openfolder, self.actions.Quit])
+        addActions(toolbar, [self.actions.OpenImagefile, self.actions.OpenVideofile,
+                             self.actions.Openfolder, self.actions.Quit])
         self.addToolBar(toolbar)
         
         self.labelCoordinates = QLabel('')
@@ -1749,9 +1759,22 @@ class MainWindow(QMainWindow):
                                 color: black;
                               }
                               ''')
+        
+        options = QToolBar('Options')
+        options.setMaximumWidth(28)
+        options.setOrientation(Qt.Vertical)
+        addWidgets(options, menu)
+        
+        jointlayout = QHBoxLayout()
+        jointlayout.setAlignment(Qt.AlignHCenter)
+        jointlayout.setContentsMargins(0,0,0,0)
+        jointlayout.addWidget(options)
+        jointlayout.addWidget(self.scrollArea)
+        
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0,0,0,0)
-        self.layout.addWidget(self.scrollArea)
+#        self.layout.addWidget(self.scrollArea)
+        self.layout.addLayout(jointlayout)
         self.layout.addLayout(self.controls)
         
         window = QWidget()
@@ -1776,7 +1799,7 @@ class MainWindow(QMainWindow):
     def closeFile(self):
         pass
     
-    def openFile(self,filetype='video-file'):
+    def openFile(self, filetype='video-file'):
         if filetype == 'video-file':
             filename = QFileDialog.getOpenFileName(self, '%s - Open video file' % __appname__, '',
                 'Video Files (*.avi;*.mp4)')[0]
@@ -1786,7 +1809,7 @@ class MainWindow(QMainWindow):
                 
         elif filetype == 'image-file':
             filename = QFileDialog.getOpenFileName(self, '%s - Open image file' % __appname__, '',
-                'Image Files (*.jpg; *.jpeg; *.jpe; *.jp2; *.png; *.bmp)')[0]
+                'Image Files (*.jpg; *.jpeg; *.jpe; *.jp2; *.png; *.bmp, *.tif, *.tiff)')[0]
             if os.path.isfile(filename):
 #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
@@ -1838,13 +1861,13 @@ class MainWindow(QMainWindow):
         
         return QImage()
     
-    def readVideo(self,FilePath):
+    def readVideo(self, FilePath):
         return cv2.VideoCapture(FilePath)
     
     def loadPreviousFrameShapes(self):
         print("use previous doesnot work")
     
-    def updatePixmap(self,current, total):
+    def updatePixmap(self, current, total):
         if not current == self.frameinfo.value():
             self.frameinfo.setValue(current)
         if not current == self.videoslider.value():
@@ -1858,9 +1881,9 @@ class MainWindow(QMainWindow):
         
         pass
         
-    def isCompatible(self,file,filetype='img'):
+    def isCompatible(self, file, filetype='img'):
         if filetype == 'img':
-            compatible_file_formats = [".jpg", ".jpeg", ".jpe", ".jp2", ".png", ".bmp"]
+            compatible_file_formats = [".jpg", ".jpeg", ".jpe", ".jp2", ".png", ".bmp", ".tif", "tiff"]
         elif filetype == 'vid':
             compatible_file_formats = [".mp4", ".avi"]
         else:
@@ -1872,7 +1895,7 @@ class MainWindow(QMainWindow):
             return True
         return False
     
-    def timerEvent(self, e):
+    def timerEvent(self, event):
         if not self.progressbar.isHidden() and self.value >= 100:
             self.timer.stop()
             self.progressbar.setHidden(True)
@@ -1880,13 +1903,13 @@ class MainWindow(QMainWindow):
         if not self.progressbar.isHidden():
             self.progressbar.setValue(int(self.value))
                 
-    def loadFile(self,Path):
+    def loadFile(self, Path):
         self.filePath = Path
         self.image = QImage()
         self.resetState()
         self.loadPixmapToCanvas()
         self.canvas.setEnabled(False)
-        if self.isCompatible(Path,filetype = 'vid') and self.video is None:
+        if self.isCompatible(Path, filetype = 'vid') and self.video is None:
             self.video = self.readVideo(Path)
             self.videobuffer = []
             self.temp = []
@@ -1901,9 +1924,9 @@ class MainWindow(QMainWindow):
                 return            
             self.frameNum = 0
             self.progressbar.setHidden(False)
-            self.timer.start(100,self)
+            self.timer.start(100, self)
             while self.video.isOpened():
-                self.video.set(15,self.frameNum)
+                self.video.set(15, self.frameNum)
                 ret, frame = self.video.read()
                 self.value = (self.frameNum/self.totalframes)*100
                 QCoreApplication.processEvents()
@@ -1923,8 +1946,8 @@ class MainWindow(QMainWindow):
             self.setControlsHidden(False)
             self.frameNum, self.totalframes = 0, len(self.videobuffer)
             self.frameUpdated.emit(self.frameNum, self.totalframes-1)
-            self.videoslider.setRange(self.frameNum,self.totalframes-1)
-            self.skipstep.setRange(self.frameNum+1,self.totalframes-1)
+            self.videoslider.setRange(self.frameNum, self.totalframes-1)
+            self.skipstep.setRange(self.frameNum+1, self.totalframes-1)
             self.frameinfo.setRange(self.frameNum, self.totalframes-1)
             self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
 #            self.videoslider.setHidden(False)
@@ -2047,16 +2070,16 @@ class MainWindow(QMainWindow):
     def toggleDrawingSensitive(self, drawing=True):
         """In the middle of drawing, toggling between modes should be disabled."""
         self.canvas.setEditing(not drawing)
-        self.actions.editMode.setEnabled(not drawing)
-        self.actions.undo.setEnabled(not drawing)
-        self.actions.delete.setEnabled(not drawing)
-        self.actions.createPolygonMode.setEnabled(not drawing)
-        self.actions.createRectangleMode.setEnabled(not drawing)
-        self.actions.createCircleMode.setEnabled(not drawing)
-        self.actions.createLineMode.setEnabled(not drawing)
-        self.actions.createCubeMode.setEnabled(not drawing)
-        self.actions.createPointMode.setEnabled(not drawing)
-        self.actions.createPolyLineMode.setEnabled(not drawing)
+        self.buttons.editMode.setEnabled(not drawing)
+        self.buttons.undo.setEnabled(not drawing)
+        self.buttons.delete.setEnabled(not drawing)
+        self.buttons.createPolygonMode.setEnabled(not drawing)
+        self.buttons.createRectangleMode.setEnabled(not drawing)
+        self.buttons.createCircleMode.setEnabled(not drawing)
+        self.buttons.createLineMode.setEnabled(not drawing)
+        self.buttons.createCubeMode.setEnabled(not drawing)
+        self.buttons.createPointMode.setEnabled(not drawing)
+        self.buttons.createPolyLineMode.setEnabled(not drawing)
         if not drawing:
             self.toggleDrawMode(edit= drawing,createMode=self.canvas.createMode)
 
@@ -2064,73 +2087,73 @@ class MainWindow(QMainWindow):
         self.canvas.setEditing(edit)
         self.canvas.createMode = createMode
         if edit:
-            self.actions.createPolygonMode.setEnabled(True)
-            self.actions.createRectangleMode.setEnabled(True)
-            self.actions.createCircleMode.setEnabled(True)
-            self.actions.createLineMode.setEnabled(True)
-            self.actions.createPointMode.setEnabled(True)
-            self.actions.createCubeMode.setEnabled(True)
-            self.actions.createPolyLineMode.setEnabled(True)
+            self.buttons.createPolygonMode.setEnabled(True)
+            self.buttons.createRectangleMode.setEnabled(True)
+            self.buttons.createCircleMode.setEnabled(True)
+            self.buttons.createLineMode.setEnabled(True)
+            self.buttons.createPointMode.setEnabled(True)
+            self.buttons.createCubeMode.setEnabled(True)
+            self.buttons.createPolyLineMode.setEnabled(True)
         else:
             if createMode == 'polygon':
-                self.actions.createPolygonMode.setEnabled(False)
-                self.actions.createRectangleMode.setEnabled(True)
-                self.actions.createCircleMode.setEnabled(True)
-                self.actions.createLineMode.setEnabled(True)
-                self.actions.createPointMode.setEnabled(True)
-                self.actions.createCubeMode.setEnabled(True)
-                self.actions.createPolyLineMode.setEnabled(True)
+                self.buttons.createPolygonMode.setEnabled(False)
+                self.buttons.createRectangleMode.setEnabled(True)
+                self.buttons.createCircleMode.setEnabled(True)
+                self.buttons.createLineMode.setEnabled(True)
+                self.buttons.createPointMode.setEnabled(True)
+                self.buttons.createCubeMode.setEnabled(True)
+                self.buttons.createPolyLineMode.setEnabled(True)
             elif createMode == 'rectangle':
-                self.actions.createPolygonMode.setEnabled(True)
-                self.actions.createRectangleMode.setEnabled(False)
-                self.actions.createCircleMode.setEnabled(True)
-                self.actions.createLineMode.setEnabled(True)
-                self.actions.createPointMode.setEnabled(True)
-                self.actions.createCubeMode.setEnabled(True)
-                self.actions.createPolyLineMode.setEnabled(True)
+                self.buttons.createPolygonMode.setEnabled(True)
+                self.buttons.createRectangleMode.setEnabled(False)
+                self.buttons.createCircleMode.setEnabled(True)
+                self.buttons.createLineMode.setEnabled(True)
+                self.buttons.createPointMode.setEnabled(True)
+                self.buttons.createCubeMode.setEnabled(True)
+                self.buttons.createPolyLineMode.setEnabled(True)
             elif createMode == 'line':
-                self.actions.createPolygonMode.setEnabled(True)
-                self.actions.createRectangleMode.setEnabled(True)
-                self.actions.createCircleMode.setEnabled(True)
-                self.actions.createLineMode.setEnabled(False)
-                self.actions.createPointMode.setEnabled(True)
-                self.actions.createCubeMode.setEnabled(True)
-                self.actions.createPolyLineMode.setEnabled(True)
+                self.buttons.createPolygonMode.setEnabled(True)
+                self.buttons.createRectangleMode.setEnabled(True)
+                self.buttons.createCircleMode.setEnabled(True)
+                self.buttons.createLineMode.setEnabled(False)
+                self.buttons.createPointMode.setEnabled(True)
+                self.buttons.createCubeMode.setEnabled(True)
+                self.buttons.createPolyLineMode.setEnabled(True)
             elif createMode == 'point':
-                self.actions.createPolygonMode.setEnabled(True)
-                self.actions.createRectangleMode.setEnabled(True)
-                self.actions.createCircleMode.setEnabled(True)
-                self.actions.createLineMode.setEnabled(True)
-                self.actions.createPointMode.setEnabled(False)
-                self.actions.createCubeMode.setEnabled(True)
-                self.actions.createPolyLineMode.setEnabled(True)
+                self.buttons.createPolygonMode.setEnabled(True)
+                self.buttons.createRectangleMode.setEnabled(True)
+                self.buttons.createCircleMode.setEnabled(True)
+                self.buttons.createLineMode.setEnabled(True)
+                self.buttons.createPointMode.setEnabled(False)
+                self.buttons.createCubeMode.setEnabled(True)
+                self.buttons.createPolyLineMode.setEnabled(True)
             elif createMode == 'circle':
-                self.actions.createPolygonMode.setEnabled(True)
-                self.actions.createRectangleMode.setEnabled(True)
-                self.actions.createCircleMode.setEnabled(False)
-                self.actions.createLineMode.setEnabled(True)
-                self.actions.createPointMode.setEnabled(True)
-                self.actions.createCubeMode.setEnabled(True)
-                self.actions.createPolyLineMode.setEnabled(True)
+                self.buttons.createPolygonMode.setEnabled(True)
+                self.buttons.createRectangleMode.setEnabled(True)
+                self.buttons.createCircleMode.setEnabled(False)
+                self.buttons.createLineMode.setEnabled(True)
+                self.buttons.createPointMode.setEnabled(True)
+                self.buttons.createCubeMode.setEnabled(True)
+                self.buttons.createPolyLineMode.setEnabled(True)
             elif createMode == 'polyline':
-                self.actions.createPolygonMode.setEnabled(True)
-                self.actions.createRectangleMode.setEnabled(True)
-                self.actions.createCircleMode.setEnabled(True)
-                self.actions.createLineMode.setEnabled(True)
-                self.actions.createPointMode.setEnabled(True)
-                self.actions.createCubeMode.setEnabled(True)
-                self.actions.createPolyLineMode.setEnabled(False)
+                self.buttons.createPolygonMode.setEnabled(True)
+                self.buttons.createRectangleMode.setEnabled(True)
+                self.buttons.createCircleMode.setEnabled(True)
+                self.buttons.createLineMode.setEnabled(True)
+                self.buttons.createPointMode.setEnabled(True)
+                self.buttons.createCubeMode.setEnabled(True)
+                self.buttons.createPolyLineMode.setEnabled(False)
             elif createMode == 'cube':
-                self.actions.createPolygonMode.setEnabled(True)
-                self.actions.createRectangleMode.setEnabled(True)
-                self.actions.createCircleMode.setEnabled(True)
-                self.actions.createLineMode.setEnabled(True)
-                self.actions.createPointMode.setEnabled(True)
-                self.actions.createCubeMode.setEnabled(False)
-                self.actions.createPolyLineMode.setEnabled(True)
+                self.buttons.createPolygonMode.setEnabled(True)
+                self.buttons.createRectangleMode.setEnabled(True)
+                self.buttons.createCircleMode.setEnabled(True)
+                self.buttons.createLineMode.setEnabled(True)
+                self.buttons.createPointMode.setEnabled(True)
+                self.buttons.createCubeMode.setEnabled(False)
+                self.buttons.createPolyLineMode.setEnabled(True)
             else:
                 raise ValueError('Unsupported createMode: %s' % createMode)
-        self.actions.editMode.setEnabled(not edit)
+        self.buttons.editMode.setEnabled(not edit)
 
     def chshapeLineColor(self):
         color = self.colorDialog.getColor(
@@ -2221,9 +2244,9 @@ class MainWindow(QMainWindow):
     # React to canvas signals.
     @Slot(bool)
     def shapeSelectionChanged(self, selected=False):
-        self.actions.delete.setEnabled(selected)
-        self.actions.shapeLineColor.setEnabled(selected)
-        self.actions.shapeFillColor.setEnabled(selected)   
+        self.buttons.delete.setEnabled(selected)
+        self.buttons.shapeLineColor.setEnabled(selected)
+        self.buttons.shapeFillColor.setEnabled(selected)   
     
     @Slot()
     def newShape(self):
