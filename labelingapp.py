@@ -1535,15 +1535,15 @@ class MainWindow(QMainWindow):
         action = functools.partial(newAction,self)
 
         Quit = action('Quit', self.close,
-            'Ctrl+Q', 'quit', 'Quit application')
+            'Ctrl+Q', 'quit', 'Quit application', )
 
-        Openfolder  = action('Open Image Folder', lambda: self.openFile(filetype='image-folder'),
+        Openfolder  = action('Open Folder', lambda: self.openFile(filetype='image-folder'),
             'Ctrl+Shift+O', 'open-folder', 'Open Image Folder')
 
-        OpenVideofile  = action('Open Video File', lambda: self.openFile(filetype='video-file'),
+        OpenVideofile  = action('Open Video', lambda: self.openFile(filetype='video-file'),
             'Ctrl+Shift+V', 'open-video-file', 'Open Video File')
 
-        OpenImagefile = action('Open Image File', lambda: self.openFile(filetype='image-file'),
+        OpenImagefile = action('Open Image', lambda: self.openFile(filetype='image-file'),
             'Ctrl+Shift+I', 'open-image-file', 'Open Image File')
 
         Close  = action('Close File', self.closeFile,
@@ -1735,7 +1735,7 @@ class MainWindow(QMainWindow):
         addActions(helpmenu, [self.actions.aboutqtact])
 
         toolbar = QToolBar('Quick Access')
-        toolbar.setMaximumHeight(28)
+        toolbar.setMaximumHeight(30)
         toolbar.setContentsMargins(0,0,0,0)
         toolbar.setFloatable(True)
         toolbar.setMovable(False)
@@ -1762,21 +1762,21 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.buttons.fitWindow_button)
         self.statusBar().addPermanentWidget(self.buttons.full_screen)
         self.statusBar().setMaximumHeight(25)
-        self.setStyleSheet('''
-                              QProgressBar {
-                                border-radius: 5px;
-                                border: 2px solid grey;
-                                text-align: center;
-                                margin: 1px 0;
-                              }
-                              QProgressBar::chunk {
-                                background: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 hotpink, stop:1 cornflowerblue);
-                              }
-                              QStatusBar {
-                                background-color: white;
-                                color: black;
-                              }
-                              ''')
+#        self.setStyleSheet('''
+#                              QProgressBar {
+#                                border-radius: 5px;
+#                                border: 2px solid grey;
+#                                text-align: center;
+#                                margin: 1px 0;
+#                              }
+#                              QProgressBar::chunk {
+#                                background: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 hotpink, stop:1 cornflowerblue);
+#                              }
+#                              QStatusBar {
+#                                background-color: white;
+#                                color: black;
+#                              }
+#                              ''')
 
         options = QVBoxLayout()
         addWidgets(options, menu)
@@ -1838,7 +1838,7 @@ class MainWindow(QMainWindow):
         elif filetype == 'image-folder':
             targetDirPath = str(QFileDialog.getExistingDirectory(
                     self, '%s - Open Folder' % __appname__,'',
-                    QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks))
+                    QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks | QFileDialog.DontUseNativeDialog))
             if os.path.isdir(targetDirPath):
                 self.loadDirImages(targetDirPath)
 
@@ -2708,5 +2708,6 @@ if __name__ == '__main__':
     platformName = platform.system()
     app = QApplication(sys.argv)
     window = MainWindow(platformName = platformName)
+#    window.setStyleSheet(readCSS("MetroDark.qss"))
     window.show()
     sys.exit(app.exec_())
