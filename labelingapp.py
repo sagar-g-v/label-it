@@ -1780,8 +1780,8 @@ class MainWindow(QMainWindow):
 
         options = QVBoxLayout()
         addWidgets(options, menu)
-        for option in menu:
-              option.setStyleSheet("border-radius: 4px;")
+#        for option in menu:
+#              option.setStyleSheet("border-radius: 4px;")
         options.setAlignment(Qt.AlignHCenter)
         options.setContentsMargins(0,0,0,0)
         print(options.spacing())
