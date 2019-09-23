@@ -15,23 +15,24 @@ import natsort
 import hashlib
 import platform
 import functools
+import qdarkstyle
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageQt, ImageEnhance
-from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QScrollBar, QMenu, QToolButton,
-                            QSpinBox, QScrollArea, QSlider, QAction, QPushButton, QGridLayout, QLineEdit, QComboBox,
-                            QCheckBox, QCompleter, QDockWidget, QHBoxLayout, QGroupBox, QVBoxLayout,QMessageBox, QColorDialog,
-                            QDialogButtonBox,QProgressBar, QDialog, QToolBar, QDesktopWidget, QAbstractSpinBox)
-from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QRect, QSettings, QSize, QPointF,QPoint,Signal,QTimer,
-                         Slot,)
-from qtpy.QtGui import (QIcon, QPicture,QPixmap, QColor, QPen,QBrush, QFont, QPainterPath, QFontMetrics, QImage,
-                        QCursor, QPainter,QIntValidator,QPalette, QFontDatabase)
+from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QMenu, QToolButton,
+                            QSpinBox, QScrollArea, QSlider, QAction, QGridLayout, QComboBox, QHBoxLayout,
+                            QGroupBox, QVBoxLayout, QMessageBox, QColorDialog, QDialogButtonBox, QProgressBar,
+                            QDialog, QToolBar, QStyledItemDelegate, QSpacerItem)
+from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QSize, QPointF, QPoint, Signal, QTimer, Slot)
+from qtpy.QtGui import (QIcon, QPixmap, QColor, QPen, QFont, QPainterPath, QFontMetrics, QImage,
+                        QPainter, QPalette)
 from qtpy import QT_VERSION
+
 QT5 = QT_VERSION[0] == '5'
 
-__appname__ = 'mylabelingapp'
-__icondir = 'icons'
-__appIcon__ = os.path.join(__icondir,'appicon.png')
+app_name = 'labelingapp'
+icondir = 'icons'
+appIcon = os.path.join(icondir, 'appicon.png')
 
 # CREDIT: https://github.com/tzutalin/labelImg
 # TODO: occluded and occluded by
@@ -53,11 +54,11 @@ DEFAULT_HVERTEX_FILL_COLOR = QColor(255, 0, 0)
 DEFAULT_CONTROLPOINT_FILL_COLOR = QColor(255, 255, 255, 50)
 DEFAULT_HCONTROLPOINT_FILL_COLOR = QColor(255, 255, 0, 255)
 
-class Shape(object):
 
+class Shape(object):
     P_SQUARE, P_ROUND = list(range(2))
 
-    MOVE_VERTEX, NEAR_VERTEX  = list(range(2))
+    MOVE_VERTEX, NEAR_VERTEX = list(range(2))
 
     # The following class variables influence the drawing of all shape objects.
     line_color = DEFAULT_LINE_COLOR
@@ -81,11 +82,11 @@ class Shape(object):
         self.shape_type = shape_type
 
         self.shape_property = {
-            "shape_type": self.shape_type, 
-            "line_color": None, 
+            "shape_type": self.shape_type,
+            "line_color": None,
             "points": [],
             "controlvalues": [],
-            "fill_color": None, 
+            "fill_color": None,
             "label": self.label
         }
         self._highlightIndex = None
@@ -114,24 +115,29 @@ class Shape(object):
         if value is None:
             value = 'polygon'
         if value not in ['polygon', 'rectangle', 'point',
-           'line', 'circle', 'polyline', 'cube']:
+                         'line', 'circle', 'polyline', 'cube']:
             raise ValueError('Unexpected shape_type: {}'.format(value))
         self._shape_type = value
-    
-    def updateProperty(self, update = dict()):
-        self.shape_property["points"] = [{"x":point.x(),"y":point.y()} \
-                                        for point in self.points]
-        self.shape_property["controlvalues"] = [{"x":value.x(),"y":value.y()} \
-                                        for value in self.controlvalues]
-    
+
+    def updateProperty(self, update=None):
+        if update is None:
+            update = dict()
+        self.shape_property["points"] = [{"x": point.x(), "y": point.y()} \
+                                         for point in self.points]
+        self.shape_property["controlvalues"] = [{"x": value.x(), "y": value.y()} \
+                                                for value in self.controlvalues]
+
     def close(self):
         self._closed = True
 
     def addPoint(self, point):
-        if self.shape_type == 'polygon' and self.points and point == self.points[0]:
-            self.close()
-        else:
-            self.points.append(point)
+        if self.shape_type == 'polygon':
+            if self.points and point == self.points[0]:
+                self.close()
+            else:
+                self.points.append(point)
+            return
+        self.points.append(point)
 
     def popPoint(self):
         if self.points:
@@ -159,45 +165,45 @@ class Shape(object):
 
     def getArea(self):
         if self.shape_type == 'rectangle':
-            w,h = self.size()
-            return w*h
+            w, h = self.size()
+            return w * h
         elif self.shape_type == 'circle':
             r = self.size()
-            return np.pi*(r**2)
+            return np.pi * (r ** 2)
         else:
             assert False, 'couldnt find area for this shape'
 
     def setOpen(self):
         self._closed = False
 
-    def getRectFromLine(self, pt1, pt2):
+    @staticmethod
+    def getRectFromLine(pt1, pt2):
         x1, y1 = pt1.x(), pt1.y()
         x2, y2 = pt2.x(), pt2.y()
         return QRectF(x1, y1, x2 - x1, y2 - y1)
 
     def getCubeFromPoints(self, points):
         cubePath = QPainterPath()
-        cubepoints = [points[0], points[1], QPoint(points[0].x(),points[1].y()), QPoint(points[1].x(),points[0].y()),
-                      points[2],points[3],QPoint(points[2].x(),points[3].y()), QPoint(points[3].x(),points[2].y())]
+        cubepoints = [points[0], points[1], QPoint(points[0].x(), points[1].y()), QPoint(points[1].x(), points[0].y()),
+                      points[2], points[3], QPoint(points[2].x(), points[3].y()), QPoint(points[3].x(), points[2].y())]
 
-        frontRect = self.getRectFromLine(points[0],points[1])
-        backRect = self.getRectFromLine(points[2],points[3])
-        cubePath = QPainterPath()
+        frontRect = self.getRectFromLine(points[0], points[1])
+        backRect = self.getRectFromLine(points[2], points[3])
 
         cubePath.addRect(frontRect)
         cubePath.addRect(backRect)
         for i in range(4):
             cubePath.moveTo(cubepoints[i])
-            cubePath.lineTo(cubepoints[i+4])
+            cubePath.lineTo(cubepoints[i + 4])
         return cubePath
 
     def paint(self, painter):
         if self.points:
             color = self.select_line_color \
                 if self.selected else self.line_color
-            penwidth = round(2.0 / self.scale)
-            pen = QPen(color, penwidth, Qt.SolidLine, Qt.RoundCap,
-                        Qt.RoundJoin)
+            pensize = round(2.0 / self.scale)
+            pen = QPen(color, pensize, Qt.SolidLine, Qt.RoundCap,
+                       Qt.RoundJoin)
             painter.setPen(pen)
 
             line_path = QPainterPath()
@@ -258,7 +264,7 @@ class Shape(object):
             painter.setPen(pen)
             painter.drawPath(line_path)
             painter.drawPath(vrtx_path)
-            pen.setColor(QColor(200,200,0))
+            pen.setColor(QColor(200, 200, 0))
             painter.setPen(pen)
             painter.drawPath(ctrx_path)
 
@@ -270,7 +276,7 @@ class Shape(object):
                 painter.fillPath(line_path, color)
 
     def drawVertex(self, path, i):
-        d = self.point_size/(self.scale*0.7) if self.scale > 1.4 else self.point_size
+        d = self.point_size / (self.scale * 0.7) if self.scale > 1.4 else self.point_size
         shape = self.point_type
         if i == self._highlightIndex:
             size, shape = self._highlightSettings[self._highlightMode]
@@ -280,32 +286,31 @@ class Shape(object):
         else:
             self.vertex_fill_color = Shape.vertex_fill_color
 
-
         if self.shape_type == 'rectangle':
-            signleft, signright = [1,-1,1,-1], [1,-1,-1,1]
+            signleft, signright = [1, -1, 1, -1], [1, -1, -1, 1]
             if i <= 1:
                 point = self.points[i]
             else:
-                point = QPoint(self.points[i-2].x(),self.points[abs(i-3)].y())
+                point = QPoint(self.points[i - 2].x(), self.points[abs(i - 3)].y())
 
-            loffset, roffset = signleft[i]*d / 3.0, signright[i]*d / 3.0
+            loffset, roffset = signleft[i] * d / 3.0, signright[i] * d / 3.0
             edgepath = QPainterPath()
-            edgepath.moveTo(QPoint(point.x() + loffset,point.y()))
+            edgepath.moveTo(QPoint(point.x() + loffset, point.y()))
             edgepath.lineTo(point)
-            edgepath.lineTo(QPoint(point.x(),point.y() + roffset))
+            edgepath.lineTo(QPoint(point.x(), point.y() + roffset))
 
             if shape == self.P_SQUARE:
-                path.addRect(point.x() - d / 3.0, point.y() - d / 3.0, 0.66*d, 0.66*d)
+                path.addRect(point.x() - d / 3.0, point.y() - d / 3.0, 0.66 * d, 0.66 * d)
             elif shape == self.P_ROUND:
-                #path.addEllipse(point, d / 3.0, d / 3.0)
-                #path.addPath(edgepath)
+                # path.addEllipse(point, d / 3.0, d / 3.0)
+                # path.addPath(edgepath)
                 pass
             else:
                 assert False, "unsupported vertex shape"
         else:
             point = self.points[i]
             if shape == self.P_SQUARE:
-                path.addRect(point.x() - d / 3.0, point.y() - d / 3.0, 0.66*d, 0.66*d)
+                path.addRect(point.x() - d / 3.0, point.y() - d / 3.0, 0.66 * d, 0.66 * d)
             elif shape == self.P_ROUND:
                 path.addEllipse(point, d / 3.0, d / 3.0)
             else:
@@ -315,7 +320,7 @@ class Shape(object):
         pass
 
     def drawControlPoint(self, path, i):
-        d = self.point_size/(self.scale*0.7) if self.scale > 1.4 else self.point_size
+        d = self.point_size / (self.scale * 0.7) if self.scale > 1.4 else self.point_size
         shape = self.point_type
         if i == self._highlightContolsIndex:
             size, shape = self._highlightSettings[self._highlightMode]
@@ -329,12 +334,12 @@ class Shape(object):
         if shape == self.P_SQUARE:
             path.moveTo(QPointF(point.x() - d / 4.0, point.y()))
             path.lineTo(QPointF(point.x(), point.y() - d / 4.0))
-            path.lineTo(QPointF(point.x()+ d / 4.0, point.y()))
+            path.lineTo(QPointF(point.x() + d / 4.0, point.y()))
             path.lineTo(QPointF(point.x(), point.y() + d / 4.0))
             path.lineTo(QPointF(point.x() - d / 4.0, point.y()))
         elif shape == self.P_ROUND:
             pass
-            #path.addEllipse(point, d / 4.0, d / 4.0)
+            # path.addEllipse(point, d / 4.0, d / 4.0)
         else:
             assert False, "unsupported vertex shape"
 
@@ -345,24 +350,24 @@ class Shape(object):
     def getControlPoint(self, i):
         if self.shape_type == 'rectangle':
             value = self.controlvalues[i]
-            points = [self.points[0],self.points[1],
-                           QPoint(self.points[0].x(),self.points[1].y()),
-                           QPoint(self.points[1].x(),self.points[0].y())]
+            points = [self.points[0], self.points[1],
+                      QPoint(self.points[0].x(), self.points[1].y()),
+                      QPoint(self.points[1].x(), self.points[0].y())]
             if value and value.isNull():
                 value = QPoint()
-            if (i == 0 or i == 1):
-                cpoint = points[i] + QPoint((points[abs(i-3)].x()-points[i].x())/2,value.y())
-            elif (i == 2 or i == 3):
-                cpoint = points[i] + QPoint(value.x(), (points[i-2].y()-points[i].y())/2)
+            if i == 0 or i == 1:
+                cpoint = points[i] + QPoint((points[abs(i - 3)].x() - points[i].x()) / 2, value.y())
+            elif i == 2 or i == 3:
+                cpoint = points[i] + QPoint(value.x(), (points[i - 2].y() - points[i].y()) / 2)
             return cpoint
 
     def nearestVertex(self, point, epsilon):
         min_distance = float('inf')
         nearest = None
         if self.shape_type == 'rectangle':
-            points = [self.points[0],self.points[1],
-                           QPoint(self.points[0].x(),self.points[1].y()),
-                           QPoint(self.points[1].x(),self.points[0].y())]
+            points = [self.points[0], self.points[1],
+                      QPoint(self.points[0].x(), self.points[1].y()),
+                      QPoint(self.points[1].x(), self.points[0].y())]
         else:
             points = self.points
 
@@ -376,24 +381,24 @@ class Shape(object):
     def nearestEdge(self, point, epsilon):
         min_distance = float('inf')
         nearest = None
-        offset = epsilon//2 + 2.0
+        offset = epsilon // 2 + 2.0
         if self.shape_type == 'rectangle':
-            points = [self.points[0],self.points[1],
-                           QPoint(self.points[0].x(),self.points[1].y()),
-                           QPoint(self.points[1].x(),self.points[0].y())]
+            points = [self.points[0], self.points[1],
+                      QPoint(self.points[0].x(), self.points[1].y()),
+                      QPoint(self.points[1].x(), self.points[0].y())]
         else:
             points = self.points
 
         for i in range(len(points)):
             if self.shape_type == 'rectangle':
                 if i == 0:
-                    line = [points[0]+QPoint(offset,0.0), points[3]-QPoint(offset,0.0)]
+                    line = [points[0] + QPoint(offset, 0.0), points[3] - QPoint(offset, 0.0)]
                 elif i == 1:
-                    line = [points[1]-QPoint(offset,0.0), points[2]+QPoint(offset,0.0)]
+                    line = [points[1] - QPoint(offset, 0.0), points[2] + QPoint(offset, 0.0)]
                 elif i == 2:
-                    line = [points[2]-QPoint(0.0,offset), points[0]+QPoint(0.0,offset)]
+                    line = [points[2] - QPoint(0.0, offset), points[0] + QPoint(0.0, offset)]
                 else:
-                    line = [points[3]+QPoint(0.0,offset), points[1]-QPoint(0.0,offset)]
+                    line = [points[3] + QPoint(0.0, offset), points[1] - QPoint(0.0, offset)]
             else:
                 line = [points[i - 1], points[i]]
 
@@ -419,7 +424,8 @@ class Shape(object):
     def containsPoint(self, point):
         return self.makePath().contains(point)
 
-    def getCircleRectFromLine(self, line):
+    @staticmethod
+    def getCircleRectFromLine(line):
         """Computes parameters to draw with `QPainterPath::addEllipse`"""
         if len(line) != 2:
             return None
@@ -486,8 +492,6 @@ class Shape(object):
     def __setitem__(self, key, value):
         self.points[key] = value
 
-# TODO(unknown):
-# - [maybe] Find optimal epsilon value.
 
 CURSOR_DEFAULT = Qt.ArrowCursor
 CURSOR_POINT = Qt.PointingHandCursor
@@ -497,8 +501,8 @@ CURSOR_GRAB = Qt.OpenHandCursor
 CURSOR_VSIZE = Qt.SizeVerCursor
 CURSOR_HSIZE = Qt.SizeHorCursor
 
-class Canvas(QWidget):
 
+class Canvas(QWidget):
     zoomRequest = Signal(int, QPoint)
     scrollRequest = Signal(int, int)
     newShape = Signal()
@@ -569,7 +573,7 @@ class Canvas(QWidget):
     @createMode.setter
     def createMode(self, value):
         if value not in ['polygon', 'rectangle', 'circle',
-           'line', 'point', 'polyline', 'cube']:
+                         'line', 'point', 'polyline', 'cube']:
             raise ValueError('Unsupported createMode: %s' % value)
         self._createMode = value
 
@@ -605,7 +609,7 @@ class Canvas(QWidget):
     def focusOutEvent(self, ev):
         self.restoreCursor()
 
-    def isVisible(self, shape):
+    def isShapeVisible(self, shape):
         return self.visible.get(shape, True)
 
     def drawing(self):
@@ -646,15 +650,15 @@ class Canvas(QWidget):
         if not self.outOfPixmap(pos):
             self.setToolTip("Image")
             self.setStatusTip('')
-            self.parent().window().labelCoordinates.setText(
-            'X: <b>%d</b>; Y: <b>%d</b> ' % (pos.x(), pos.y()))
+            self.parent().window().other_widgets.labelCoordinates.setText(
+                'X: <b>%d</b>; Y: <b>%d</b> ' % (pos.x(), pos.y()))
         else:
             self.setToolTip("Canvas")
             self.setStatusTip('')
-            self.parent().window().labelCoordinates.clear()
+            self.parent().window().other_widgets.labelCoordinates.clear()
 
         self.prevMovePoint = pos
-#        self.restoreCursor()
+        #        self.restoreCursor()
         self.overrideCursor(Qt.ArrowCursor)
 
         # Polygon drawing.
@@ -670,7 +674,7 @@ class Canvas(QWidget):
                 # Don't allow the user to draw outside the pixmap.
                 # Project the point to the pixmap's edges.
                 pos = self.intersectionPoint(self.current[-1], pos)
-            elif len(self.current) > 1 and self.createMode == 'polygon' and\
+            elif len(self.current) > 1 and self.createMode == 'polygon' and \
                     self.closeEnough(pos, self.current[0]):
                 # Attract line to starting point and
                 # colorise to alert the user.
@@ -691,8 +695,8 @@ class Canvas(QWidget):
                     self.line.close()
                 elif len(self.current.points) < 4:
                     size = self.current.points[1] - self.current.points[0]
-                    self.line.points = [QPoint(pos.x()-(size.x()/2),pos.y()-(size.y()/2)),\
-                                        QPoint(pos.x()+(size.x()/2),pos.y()+(size.y()/2))]
+                    self.line.points = [QPoint(pos.x() - (size.x() / 2), pos.y() - (size.y() / 2)), \
+                                        QPoint(pos.x() + (size.x() / 2), pos.y() + (size.y() / 2))]
                     self.line.close()
             elif self.createMode == 'circle':
                 self.line.points = [self.current[0], pos]
@@ -708,7 +712,7 @@ class Canvas(QWidget):
             self.current.highlightClear()
             return
 
-        # Polygon copy moving.
+        # Polygon docopy moving.
         if Qt.RightButton & ev.buttons():
             if self.selectedShapeCopy and self.prevPoint:
                 self.overrideCursor(CURSOR_MOVE)
@@ -737,17 +741,16 @@ class Canvas(QWidget):
                 self.movingShape = True
             return
 
-        # Just hovering over the canvas, 2 posibilities:
+        # Just hovering over the canvas, 2 possibilities:
         # - Highlight shapes
         # - Highlight vertex
         # Update shape/vertex fill and tooltip value accordingly.
-        for shape in reversed([s for s in self.shapes if self.isVisible(s)]):
+        for shape in reversed([s for s in self.shapes if self.isShapeVisible(s)]):
             # Look for a nearby vertex to highlight. If that fails,
             # check if we happen to be inside a shape.
-            index, eindex, cindex = None, None, None
             index = shape.nearestVertex(pos, self.epsilon)
             eindex = shape.nearestEdge(pos, self.epsilon)
-            cindex = shape.nearestControlPoint(pos, 2*self.epsilon)
+            cindex = shape.nearestControlPoint(pos, 2 * self.epsilon)
 
             if index is not None:
                 if self.selectedVertex():
@@ -782,17 +785,17 @@ class Canvas(QWidget):
                 break
 
 
-#            elif shape.containsPoint(pos):# highlight when hovering over shape
-#                if self.selectedVertex():
-#                    self.hShape.highlightClear()
-#                self.hVertex = None
-#                self.hShape = shape
-#                self.hEdge = None
-#                self.setToolTip(
-#                    "Click & drag to move shape '%s'" % shape.label)
-#                self.overrideCursor(CURSOR_GRAB)
-#                self.update()
-#                break
+        #            elif shape.containsPoint(pos):# highlight when hovering over shape
+        #                if self.selectedVertex():
+        #                    self.hShape.highlightClear()
+        #                self.hVertex = None
+        #                self.hShape = shape
+        #                self.hEdge = None
+        #                self.setToolTip(
+        #                    "Click & drag to move shape '%s'" % shape.label)
+        #                self.overrideCursor(CURSOR_GRAB)
+        #                self.update()
+        #                break
         else:  # Nothing found, clear highlights, reset state.
             if self.hShape:
                 self.hShape.highlightClear()
@@ -826,7 +829,7 @@ class Canvas(QWidget):
                 self.overrideCursor(CURSOR_DRAW)
                 if self.current:
                     # Add point to existing shape.
-                    if self.createMode in ['polygon']:
+                    if self.createMode == 'polygon':
                         self.current.addPoint(self.line[1])
                         self.line[0] = self.current[-1]
                         if self.current.isClosed():
@@ -861,7 +864,7 @@ class Canvas(QWidget):
                         self.setHiding()
                         self.update()
             else:
-#                self.overrideCursor(Qt.ArrowCursor)
+                #                self.overrideCursor(Qt.ArrowCursor)
                 self.selectShapePoint(pos)
                 self.prevPoint = pos
                 if self.selectedEdge() and not self.selectedVertex():
@@ -875,25 +878,25 @@ class Canvas(QWidget):
 
     def mouseReleaseEvent(self, ev):
         if ev.button() == Qt.RightButton:
-#            menu = self.menus[bool(self.selectedShapeCopy)]
+            #            menu = self.menus[bool(self.selectedShapeCopy)]
             self.restoreCursor()
-#            if not menu.exec_(self.mapToGlobal(ev.pos()))\
-#               and self.selectedShapeCopy:
-#                # Cancel the move by deleting the shadow copy.
-#                self.selectedShapeCopy = None
-#                self.repaint()
+        #            if not menu.exec_(self.mapToGlobal(ev.pos()))\
+        #               and self.selectedShapeCopy:
+        #                # Cancel the move by deleting the shadow docopy.
+        #                self.selectedShapeCopy = None
+        #                self.repaint()
         elif ev.button() == Qt.LeftButton and self.selectedShape:
             self.overrideCursor(CURSOR_GRAB)
         if self.movingShape:
             self.storeShapes()
             self.shapeMoved.emit()
 
-    def endMove(self, copy=False):
+    def endMove(self, docopy=False):
         assert self.selectedShape and self.selectedShapeCopy
         shape = self.selectedShapeCopy
         # del shape.fill_color
         # del shape.line_color
-        if copy:
+        if docopy:
             self.shapes.append(shape)
             self.selectedShape.selected = False
             self.selectedShape = shape
@@ -923,7 +926,7 @@ class Canvas(QWidget):
         # We need at least 4 points here, since the mousePress handler
         # adds an extra one before this handler is called.
         if self.canCloseShape() and len(self.current) > 3:
-            self.current.popPoint()
+            # self.current.popPoint()
             self.finalise()
 
     def selectShape(self, shape):
@@ -944,13 +947,13 @@ class Canvas(QWidget):
             return
         elif self.selectedEdge():
             index, shape = self.hEdge, self.hShape
-           # shape.highlightVertex(index, shape.MOVE_EDGE)
+            # shape.highlightVertex(index, shape.MOVE_EDGE)
             self.selectShape(shape)
             return
 
         for shape in reversed(self.shapes):
-            if self.isVisible(shape) and shape.containsPoint(point):
-                self.calculateOffsets(shape,point)
+            if self.isShapeVisible(shape) and shape.containsPoint(point):
+                self.calculateOffsets(shape, point)
                 self.selectShape(shape)
                 return
 
@@ -966,21 +969,22 @@ class Canvas(QWidget):
         index, shape = self.hVertex, self.hShape
         if shape.shape_type == 'rectangle':
             w, h = shape.size()
-            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].y()), QPoint(shape[1].x(),shape[0].y())]
+            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(), shape[1].y()),
+                               QPoint(shape[1].x(), shape[0].y())]
             point = rectanglePoints[index]
             if self.outOfPixmap(pos):
-                pos = self.intersectionPoint(point, pos)
+                pos = self.intersectionPoint(pos, point)
             shiftPos = pos - point
             if index == 0:
-                if h - shiftPos.y() >= 10.0 :
+                if h - shiftPos.y() >= 10.0:
                     shape.moveVertexBy(index, QPointF(0.0, shiftPos.y()))
-                if w - shiftPos.x() >= 10.0 :
+                if w - shiftPos.x() >= 10.0:
                     shape.moveVertexBy(index, QPointF(shiftPos.x(), 0.0))
             elif index == 1:
-                if h + shiftPos.y() >= 10.0 :
+                if h + shiftPos.y() >= 10.0:
                     shape.moveVertexBy(index, QPointF(0.0, shiftPos.y()))
-                if w + shiftPos.x() >= 10.0 :
-                    shape.moveVertexBy(index, QPointF(shiftPos.x(),0.0))
+                if w + shiftPos.x() >= 10.0:
+                    shape.moveVertexBy(index, QPointF(shiftPos.x(), 0.0))
             elif index == 2:
                 shiftPos = pos - shape[0]
                 if w - shiftPos.x() >= 10.0:
@@ -998,29 +1002,30 @@ class Canvas(QWidget):
         else:
             point = shape[index]
             if self.outOfPixmap(pos):
-                pos = self.intersectionPoint(point, pos)
+                pos = self.intersectionPoint(pos, point)
             shape.moveVertexBy(index, pos - point)
 
     def boundedMoveEdge(self, pos):
         index, shape = self.hEdge, self.hShape
         if shape.shape_type == 'rectangle':
-            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(),shape[1].x()), QPoint(shape[1].x(),shape[0].x())]
+            rectanglePoints = [shape[0], shape[1], QPoint(shape[0].x(), shape[1].x()),
+                               QPoint(shape[1].x(), shape[0].x())]
             w, h = shape.size()
             point = rectanglePoints[index]
             if self.outOfPixmap(pos):
-                #ERROR:self.canvas.scale when trying to move edge out of image
+                # ERROR:self.canvas.scale when trying to move edge out of image
                 pos = self.intersectionPoint(point, pos)
 
             shiftPos = pos - point
             shift = None
             if index == 1:
                 if h + shiftPos.y() >= 10.0:
-                   shift = QPointF(0.0, shiftPos.y())
-                   shape.moveVertexBy(1, shift)
+                    shift = QPointF(0.0, shiftPos.y())
+                    shape.moveVertexBy(1, shift)
             elif index == 0:
                 if h - shiftPos.y() >= 10.0:
-                   shift = QPointF(0.0, shiftPos.y())
-                   shape.moveVertexBy(0, shift)
+                    shift = QPointF(0.0, shiftPos.y())
+                    shape.moveVertexBy(0, shift)
             elif index == 2:
                 if w - shiftPos.x() >= 10.0:
                     shift = QPointF(shiftPos.x(), 0.0)
@@ -1039,7 +1044,7 @@ class Canvas(QWidget):
         o2 = pos + self.offsets[1]
         if self.outOfPixmap(o2):
             pos += QPoint(min(0, self.pixmap.width() - o2.x()),
-                                 min(0, self.pixmap.height() - o2.y()))
+                          min(0, self.pixmap.height() - o2.y()))
         # XXX: The next line tracks the new position of the cursor
         # relative to the shape, but also results in making it
         # a bit "shaky" when nearing the border and allows it to
@@ -1066,6 +1071,7 @@ class Canvas(QWidget):
             self.shapes.remove(self.selectedShape)
             self.storeShapes()
             self.selectedShape = None
+            self.selectionChanged.emit(False)
             self.update()
             return shape
 
@@ -1106,7 +1112,7 @@ class Canvas(QWidget):
         Shape.scale = self.scale
         for shape in self.shapes:
             if (shape.selected or not self._hideBackround) and \
-                    self.isVisible(shape):
+                    self.isShapeVisible(shape):
                 shape.fill = shape.selected or shape == self.hShape
                 shape.paint(p)
         if self.current:
@@ -1125,7 +1131,7 @@ class Canvas(QWidget):
 
         if self.hShape and self.hEdge and self.hShape.shape_type in ['polygon', 'polyline']:
             dotpath = QPainterPath()
-            d = Shape.point_size/(self.scale*0.7) if self.scale > 1.4 else Shape.point_size
+            d = Shape.point_size / (self.scale * 0.7) if self.scale > 1.4 else Shape.point_size
             dotpath.addEllipse(self.prevMovePoint, d / 2.0, d / 2.0)
             p.drawPath(dotpath)
             p.fillPath(dotpath, Shape.vertex_fill_color)
@@ -1134,25 +1140,26 @@ class Canvas(QWidget):
 
         if not self.pixmap.isNull():
             pal = QPalette()
-            pal.setColor(self.backgroundRole(), QColor(50, 50, 50, 255))
+            pal.setColor(self.backgroundRole(), QColor(25, 35, 45, 50))
             self.setPalette(pal)
             self.setEnabled(True)
         else:
             pal = QPalette()
-            pal.setColor(self.backgroundRole(), QColor(200, 200, 200, 255))
+            pal.setColor(self.backgroundRole(), QColor(77, 84, 91, 50))
             self.drawlogo(p)
             self.setPalette(pal)
             self.setEnabled(False)
         p.end()
 
-    def drawlogo(self, p):
-        icon = QIcon(__appIcon__)
-        defaultPixmap = icon.pixmap(QSize(100,100),QIcon.Disabled)
-        p.drawPixmap(-1*defaultPixmap.width()/2,-1*defaultPixmap.height()/2,defaultPixmap)
+    @staticmethod
+    def drawlogo(p):
+        icon = QIcon(appIcon)
+        defaultPixmap = icon.pixmap(QSize(100, 100), QIcon.Disabled)
+        p.drawPixmap(-1 * defaultPixmap.width() / 2, -1 * defaultPixmap.height() / 2, defaultPixmap)
         # and draw text
-        p.setFont(QFont('Consolas', 20,10))
-        p.setPen(QPen(QColor(140,140,140)))
-        p.drawText((-1*defaultPixmap.width()/2)-10,(defaultPixmap.height()/2)+20,'empty :(')
+        p.setFont(QFont('Consolas', 20, 10))
+        p.setPen(QPen(QColor(140, 140, 140)))
+        p.drawText((-1 * defaultPixmap.width() / 2) - 10, (defaultPixmap.height() / 2) + 20, 'empty :(')
 
     def transformPos(self, point):
         """Convert from widget-logical coordinates to painter-logical ones."""
@@ -1174,24 +1181,22 @@ class Canvas(QWidget):
     def finalise(self):
         assert self.current
         self.current.close()
-#        if self.current.shape_type == 'polyline':
-#            print(self.current.points)
         if self.current.shape_type == 'rectangle':
-            w,h =  self.current.size()
+            w, h = self.current.size()
             points = self.current.points
 
             if w < 0 and h < 0:
-                self.current.points[0] = QPoint(points[1].x(),points[1].y())
-                self.current.points[1] = QPoint(points[0].x()-w,points[0].y()-h)
+                self.current.points[0] = QPoint(points[1].x(), points[1].y())
+                self.current.points[1] = QPoint(points[0].x() - w, points[0].y() - h)
             elif w < 0:
-                self.current.points[0] = QPoint(points[1].x(),points[0].y())
-                self.current.points[1] = QPoint(points[0].x()-w,points[1].y())
+                self.current.points[0] = QPoint(points[1].x(), points[0].y())
+                self.current.points[1] = QPoint(points[0].x() - w, points[1].y())
             elif h < 0:
-                self.current.points[0] = QPoint(points[0].x(),points[1].y())
-                self.current.points[1] = QPoint(points[1].x(),points[0].y()-h)
+                self.current.points[0] = QPoint(points[0].x(), points[1].y())
+                self.current.points[1] = QPoint(points[1].x(), points[0].y() - h)
 
-            w,h =  self.current.size()
-            if not(w < 10 or h < 10):
+            w, h = self.current.size()
+            if not (w < 10 or h < 10):
                 self.shapes.append(self.current)
                 self.storeShapes()
         else:
@@ -1220,6 +1225,7 @@ class Canvas(QWidget):
                   (0, size.height() - 1)]
         x1, y1 = p1.x(), p1.y()
         x2, y2 = p2.x(), p2.y()
+        # ERROR: ValueError: min() arg is an empty sequence
         d, i, (x, y) = min(self.intersectingEdges((x1, y1), (x2, y2), points))
         x3, y3 = points[i]
         x4, y4 = points[(i + 1) % 4]
@@ -1231,7 +1237,8 @@ class Canvas(QWidget):
                 return QPoint(min(max(0, x2), max(x3, x4)), y3)
         return QPoint(x, y)
 
-    def intersectingEdges(self, point1, point2, points):
+    @staticmethod
+    def intersectingEdges(point1, point2, points):
         """Find intersecting edges.
 
         For each edge formed by `points', yield the intersection
@@ -1274,7 +1281,7 @@ class Canvas(QWidget):
         if QT5:
             mods = ev.modifiers()
             delta = ev.angleDelta()
-            #print(delta)
+            # print(delta)
             if Qt.ControlModifier == int(mods):
                 # with Ctrl/Command key
                 # zoom
@@ -1310,7 +1317,7 @@ class Canvas(QWidget):
 
         mods = ev.modifiers()
         if Qt.ShiftModifier == mods:
-            #print("Shift pressed")
+            # print("Shift pressed")
             if key == Qt.Key_Right and self.shapes:
                 if self.selectedShape:
                     self.autoselect = self.shapes.index(self.selectedShape)
@@ -1326,12 +1333,12 @@ class Canvas(QWidget):
                 self.deSelectShape()
                 self.autoselect -= 1
                 if self.autoselect < 0:
-                    self.autoselect = len(self.shapes)-1
+                    self.autoselect = len(self.shapes) - 1
                 shape = self.shapes[self.autoselect]
                 self.selectShape(shape)
 
         elif Qt.ControlModifier == mods:
-            #print("Ctrl pressed")
+            # print("Ctrl pressed")
             if key == Qt.Key_Left and self.selectedShape:
                 self.moveOnePixel('leftEOut')
             elif key == Qt.Key_Right and self.selectedShape:
@@ -1343,8 +1350,8 @@ class Canvas(QWidget):
             if key == Qt.Key_T:
                 self.smoothimage = not self.smoothimage
                 self.update()
-        elif (Qt.ControlModifier|Qt.ShiftModifier) == mods:
-            #print("Ctrl+Shift pressed")
+        elif (Qt.ControlModifier | Qt.ShiftModifier) == mods:
+            # print("Ctrl+Shift pressed")
             if key == Qt.Key_Left and self.selectedShape:
                 self.moveOnePixel('leftEIn')
             elif key == Qt.Key_Right and self.selectedShape:
@@ -1354,7 +1361,7 @@ class Canvas(QWidget):
             elif key == Qt.Key_Down and self.selectedShape:
                 self.moveOnePixel('downEIn')
         elif Qt.AltModifier == mods:
-            #print("Alt pressed")
+            # print("Alt pressed")
             if key == Qt.Key_Up and self.selectedShape:
                 self.moveOnePixel('expandOut')
             elif key == Qt.Key_Down and self.selectedShape:
@@ -1370,7 +1377,7 @@ class Canvas(QWidget):
                 self.moveOnePixel('down')
 
     def moveOutOfBound(self, step):
-        points = [p1+p2 for p1, p2 in zip(self.selectedShape.points, [step]*len(self.selectedShape.points))]
+        points = [p1 + p2 for p1, p2 in zip(self.selectedShape.points, [step] * len(self.selectedShape.points))]
         return True in map(self.outOfPixmap, points)
 
     def moveOnePixel(self, direction):
@@ -1383,7 +1390,7 @@ class Canvas(QWidget):
         elif direction == 'down' and not self.moveOutOfBound(QPointF(0, 1.0)):
             self.selectedShape.moveBy(QPointF(0, 1.0))
         if self.selectedShape.shape_type == 'rectangle':
-            w,h = self.selectedShape.size()
+            w, h = self.selectedShape.size()
             if direction == 'leftEOut' and not self.moveOutOfBound(QPointF(-1.0, 0)):
                 self.selectedShape.moveVertexBy(0, QPointF(-1.0, 0))
             elif direction == 'rightEOut' and not self.moveOutOfBound(QPointF(1.0, 0)):
@@ -1392,20 +1399,20 @@ class Canvas(QWidget):
                 self.selectedShape.moveVertexBy(0, QPointF(0, -1.0))
             elif direction == 'downEOut' and not self.moveOutOfBound(QPointF(0, 1.0)):
                 self.selectedShape.moveVertexBy(1, QPointF(0, 1.0))
-            elif direction == 'leftEIn' and (w + 1.0 >=10):
+            elif direction == 'leftEIn' and (w + 1.0 >= 10):
                 self.selectedShape.moveVertexBy(0, QPointF(1.0, 0))
-            elif direction == 'rightEIn' and (w - 1.0 >=10):
+            elif direction == 'rightEIn' and (w - 1.0 >= 10):
                 self.selectedShape.moveVertexBy(1, QPointF(-1.0, 0))
-            elif direction == 'upEIn' and (h + 1.0 >=10):
+            elif direction == 'upEIn' and (h + 1.0 >= 10):
                 self.selectedShape.moveVertexBy(0, QPointF(0, 1.0))
-            elif direction == 'downEIn' and (h - 1.0 >=10):
+            elif direction == 'downEIn' and (h - 1.0 >= 10):
                 self.selectedShape.moveVertexBy(1, QPointF(0, -1.0))
-            elif direction == 'expandOut' and (not self.moveOutOfBound(QPointF(-1.0, -1.0)) or\
-                                               not self.moveOutOfBound(QPointF(1.0, 1.0)) ):
+            elif direction == 'expandOut' and \
+                    not (self.moveOutOfBound(QPointF(-1.0, -1.0)) and self.moveOutOfBound(QPointF(1.0, 1.0))):
                 self.selectedShape.moveVertexBy(0, QPointF(-1.0, -1.0))
                 self.selectedShape.moveVertexBy(1, QPointF(1.0, 1.0))
-            elif direction == 'expandIn'and not((h - 1.0 <10) or (h + 1.0 <10)) and\
-                                            not((w - 1.0 <10) or (w + 1.0 <10)):
+            elif direction == 'expandIn' and not ((h - 1.0 < 10) or (h + 1.0 < 10)) and \
+                    not ((w - 1.0 < 10) or (w + 1.0 < 10)):
                 self.selectedShape.moveVertexBy(0, QPointF(1.0, 1.0))
                 self.selectedShape.moveVertexBy(1, QPointF(-1.0, -1.0))
         self.shapeMoved.emit()
@@ -1461,7 +1468,8 @@ class Canvas(QWidget):
         self._cursor = cursor
         QApplication.setOverrideCursor(cursor)
 
-    def restoreCursor(self):
+    @staticmethod
+    def restoreCursor():
         QApplication.restoreOverrideCursor()
 
     def resetState(self):
@@ -1470,14 +1478,16 @@ class Canvas(QWidget):
         self.shapesBackups = []
         self.update()
 
+
 class MainWindow(QMainWindow):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
     frameUpdated = Signal(int, int)
 
-    def __init__(self, platformName, defaultFilename=None, defaultPrefdefClassFile=None, defaultSaveDir=None):
+    def __init__(self, osplatform, defaultSaveDir=None):
         super(MainWindow, self).__init__()
-        self.setWindowTitle(__appname__)
-        self.setWindowIcon(QIcon(__appIcon__))
+        self.platformName = osplatform
+        self.setWindowTitle(app_name)
+        self.setWindowIcon(QIcon(appIcon))
         self.colorDialog = ColorDialog(parent=self)
 
         self.canvas = Canvas(parent=self)
@@ -1493,7 +1503,7 @@ class MainWindow(QMainWindow):
         self.zoomWidget = ZoomWidget()
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
 
-#        self.labelwidget = LabelWidget()
+        # self.labelwidget = LabelWidget()
 
         self.imageditor = ImageEditor(parent=self)
 
@@ -1515,7 +1525,6 @@ class MainWindow(QMainWindow):
             # Set to one to scale to 100% when loading files.
             self.MANUAL_ZOOM: lambda: 1,
         }
-        self.scrollArea = scroll
 
         self.image = QImage()
         self.cvimage = None
@@ -1532,85 +1541,127 @@ class MainWindow(QMainWindow):
         self.skipStepValue = int()
         self.previous_Scroll_pos = None
 
-        action = functools.partial(newAction,self)
+        action = functools.partial(newAction, self)
 
         Quit = action('Quit', self.close,
-            'Ctrl+Q', 'quit', 'Quit application', )
+                      'Ctrl+Q', 'quit', 'Quit application', )
 
-        Openfolder  = action('Open Folder', lambda: self.openFile(filetype='image-folder'),
-            'Ctrl+Shift+O', 'open-folder', 'Open Image Folder')
+        Openfolder = action('Open Folder', lambda: self.openFile(filetype='image-folder'),
+                            'Ctrl+Shift+O', 'open-folder', 'Open Image Folder')
 
-        OpenVideofile  = action('Open Video', lambda: self.openFile(filetype='video-file'),
-            'Ctrl+Shift+V', 'open-video-file', 'Open Video File')
+        OpenVideofile = action('Video', lambda: self.openFile(filetype='video-file'),
+                               'Ctrl+Shift+V', 'open-video-file', 'Open Video File')
 
-        OpenImagefile = action('Open Image', lambda: self.openFile(filetype='image-file'),
-            'Ctrl+Shift+I', 'open-image-file', 'Open Image File')
+        OpenImagefile = action('Image', lambda: self.openFile(filetype='image-file'),
+                               'Ctrl+Shift+I', 'open-image-file', 'Open Image File')
 
-        Close  = action('Close File', self.closeFile,
-            'Ctrl+Shift+W', 'close', 'Close File', enabled=False)
+        Close = action('Close File', self.closeFile,
+                       'Ctrl+Shift+W', 'close', 'Close File', enabled=False)
 
-        aboutqtact = action('About &Qt', QApplication.aboutQt)
+        about_qt = action('About &Qt', QApplication.aboutQt)
 
-        button = functools.partial(newButton,self)
+        button = functools.partial(newButton, self)
 
         createPolygonMode = button('Polygons', lambda: self.toggleDrawMode(False, createMode='polygon'),
-            'P', 'polygon', 'Draw polygons', enabled=False,)
+                                   'P', 'polygon', 'Draw polygons', enabled=False, )
 
         createCubeMode = button('Cuboid', lambda: self.toggleDrawMode(False, createMode='cube'),
-            'C', 'cuboid', 'Draw Cuboid', enabled=False,)
+                                'C', 'cuboid', 'Draw Cuboid', enabled=False, )
 
         createRectangleMode = button('Rectangle', lambda: self.toggleDrawMode(False, createMode='rectangle'),
-            'R', 'rectangle', 'Draw rectangles', enabled=False,)
+                                     'R', 'rectangle', 'Draw rectangles', enabled=False, )
 
         createCircleMode = button('Circle', lambda: self.toggleDrawMode(False, createMode='circle'),
-            'Ctrl+C', 'circle', 'Draw circles', enabled=False,)
+                                  'Ctrl+C', 'circle', 'Draw circles', enabled=False, )
 
         createLineMode = button('Line', lambda: self.toggleDrawMode(False, createMode='line'),
-            'L', 'line', 'Draw lines', enabled=False,)
+                                'L', 'line', 'Draw lines', enabled=False, )
 
         createPointMode = button('Point', lambda: self.toggleDrawMode(False, createMode='point'),
-            'Ctrl+P', 'dot', 'Draw points', enabled=False,)
+                                 'Ctrl+P', 'dot', 'Draw points', enabled=False, )
 
         createPolyLineMode = button('PolyLine', lambda: self.toggleDrawMode(False, createMode='polyline'),
-            'Ctrl+L', 'polyline', 'Draw polyline. Ctrl+LeftClick ends creation.', enabled=False,)
+                                    'Ctrl+L', 'polyline', 'Draw polyline. Ctrl+LeftClick ends creation.',
+                                    enabled=False, )
 
         editMode = button('Edit', self.setEditMode,
-            'Ctrl+E', 'edit', 'Move and Edit', enabled=False,)
+                          'Ctrl+E', 'edit', 'Move and Edit', enabled=False, )
 
         shapeLineColor = button('Line Color', self.chshapeLineColor,
-            icon='pen-color', tip='Change the line color for this specific shape', enabled=False)
+                                icon='pen-color', tip='Change the line color for this specific shape', enabled=False)
 
         shapeFillColor = button('Fill Color', self.chshapeFillColor,
-            icon='fill-color', tip='Change the fill color for this specific shape', enabled=False)
+                                icon='fill-color', tip='Change the fill color for this specific shape', enabled=False)
 
         delete = button('Delete', self.deleteSelectedShape,
-            'Delete', 'delete', 'Delete selected Shape', enabled=False)
+                        'Delete', 'delete', 'Delete selected Shape', enabled=False)
 
         undo = button('Undo', self.undoDeletetion,
-            'Ctrl+Z', 'undo', 'Undo', enabled=False)
+                      'Ctrl+Z', 'undo', 'Undo', enabled=False)
 
         imagedit = button('image setting', self.openImagEditor,
-            icon='image-setting', tip='Edit image', enabled=False)
+                          icon='image-setting', tip='Edit image', enabled=False)
 
-        fitWindow_button = button('&Fit-To-Canvas', self.setFitWindow,'Tab', 'expand',
-                           'Fit to canvas size',style=Qt.ToolButtonTextBesideIcon, checkable=True, enabled=False)
+        play_button = button('&Play', self.Play, 'Space', 'play',
+                             'Start playing video', stylesheet="border-radius: 4px;", iconSize=QSize(25, 25))
 
-        play_button = button('&Play', self.Play,'Space', 'play',
-                           'Start playing video',stylesheet="border-radius: 4px;",IconSize=QSize(30,30))
+        previous_button = button('&Previous', self.loadPreviousframe, 'A', 'previous',
+                                 'Go to previous frame', stylesheet="border-radius: 4px;", iconSize=QSize(18, 18))
 
-        previous_button = button('&Previous', self.loadPreviousframe,'A', 'previous',
-                           'Go to previous frame',stylesheet="border-radius: 4px;", IconSize=QSize(25,25))
+        next_button = button('&Next', self.loadNextframe, 'D', 'next',
+                             'Go to next frame', stylesheet="border-radius: 4px;", iconSize=QSize(18, 18))
 
-        next_button = button('&Next', self.loadNextframe,'D', 'next',
-                           'Go to next frame',stylesheet="border-radius: 4px;",IconSize=QSize(25,25))
+        full_screen = button('&Go full screen', self.toggleFullscreen, 'Ctrl+Tab', 'full-screen',
+                             'Go full screen', )
 
-        usePrevious_botton = button('&Use Previous', self.loadPreviousFrameShapes,'I', 'use-previous',
-                           'Use previous frame shapes',stylesheet="border-radius: 4px;", IconSize=QSize(25,25))
+        zoom_to_extents = button('Zoom to canvas size', lambda: self.setFitWindow(True), 'Shift+Tab', 'zoom-to-extents',
+                                 'Zoom to canvas size', enabled=False)
 
-        full_screen = button('&Go full screen', self.toggleFullscreen,'Ctrl+Tab' ,'full-screen',
-                             'Go full screen',)
+        zoom_to_actual_size = button('Zoom to actual size', lambda: self.setFitWindow(False), 'Tab',
+                                     'zoom-to-actual-size',
+                                     'Zoom to actual size', enabled=False)
 
-        menu =(
+        zoom_in = button('Zoom In', lambda: self.addZoom(1),
+                         ['Ctrl+=', 'Ctrl++'], 'zoom-in', 'Zoom In', enabled=False)
+
+        zoom_out = button('Zoom Out', lambda: self.addZoom(-1),
+                          'Ctrl+-', 'zoom-out', 'Zoom Out', enabled=False)
+
+        frameinfo = QSpinBox()
+        frameinfo.setSingleStep(1)
+        frameinfo.setRange(0, 0)
+        frameinfo.setAlignment(Qt.AlignCenter)
+        frameinfo.setSuffix(' / 0')
+        frameinfo.setStatusTip('Go to a frame')
+        frameinfo.valueChanged.connect(self.loadFrame)
+
+        skipstep = QSpinBox()
+        skipstep.setValue(1)
+        skipstep.setRange(1, 1)
+        skipstep.setAlignment(Qt.AlignHCenter)
+        skipstep.setSuffix(' frame')
+
+        fpsbox = QComboBox()
+        fpsbox.addItems(['30+', '20', '15', '10', '5', '1'])
+        delegate = QStyledItemDelegate()
+        fpsbox.setItemDelegate(delegate)
+        fpsbox.setToolTip('Frame rate')
+        fpsbox.setStatusTip('Frame rate')
+
+        videoslider = QSlider(Qt.Horizontal)
+        videoslider.setValue(0)
+        videoslider.setTickPosition(QSlider.TicksBelow)
+        videoslider.setTickInterval(1)
+        videoslider.valueChanged.connect(self.loadFrame)
+        videoslider.setHidden(True)
+
+        progressbar = QProgressBar()
+        progressbar.setHidden(True)
+        progressbar.setMaximumSize(QSize(150, 16))
+
+        labelCoordinates = QLabel('')
+
+        menu = (
             createRectangleMode,
             createPolyLineMode,
             createPolygonMode,
@@ -1623,10 +1674,25 @@ class MainWindow(QMainWindow):
             editMode,
             delete,
             undo,
-            imagedit,
+            imagedit
         )
 
-        onLoadActive =(
+        controls_menu = (
+            previous_button,
+            play_button,
+            next_button,
+            fpsbox,
+            videoslider
+        )
+
+        zoom_menu = (
+            zoom_in,
+            zoom_out,
+            zoom_to_extents,
+            zoom_to_actual_size
+        )
+
+        onLoadActive = (
             Close,
             createPolygonMode,
             createRectangleMode,
@@ -1636,220 +1702,170 @@ class MainWindow(QMainWindow):
             createPointMode,
             createPolyLineMode,
             editMode,
-            imagedit,
+            imagedit
+        )
+
+        toolbar_menu = (
+            OpenImagefile,
+            OpenVideofile,
+            Openfolder,
+            None,
+            Quit
+        )
+
+        other_menu = (
+            progressbar,
+            labelCoordinates,
+            QLabel('<b>Skip:</b>'),
+            skipstep,
+            QLabel('<b>Frame:</b>'),
+            frameinfo,
+            QLabel('<b>Zoom:</b>'),
+            self.zoomWidget
         )
 
         self.actions = struct(
-                OpenImagefile=OpenImagefile, Quit=Quit,
-                OpenVideofile=OpenVideofile, Openfolder=Openfolder, Close=Close,
-                aboutqtact=aboutqtact, onLoadActive=onLoadActive
-                )
+            OpenImagefile=OpenImagefile, Quit=Quit, OpenVideofile=OpenVideofile,
+            Openfolder=Openfolder, Close=Close, about_qt=about_qt, onLoadActive=onLoadActive,
+            toolbar_menu=toolbar_menu
+        )
+
+        self.zoom_widgets = struct(
+            zoom_to_extents=zoom_to_extents, zoom_in=zoom_in, zoom_out=zoom_out,
+            zoom_to_actual_size=zoom_to_actual_size, zoom_menu=zoom_menu
+        )
+
+        self.controls_widgets = struct(
+            previous_button=previous_button, play_button=play_button, next_button=next_button, fpsbox=fpsbox,
+            videoslider=videoslider, controls_menu=controls_menu
+        )
+
+        self.other_widgets = struct(
+            frameinfo=frameinfo, skipstep=skipstep, progressbar=progressbar, labelCoordinates=labelCoordinates,
+            other_menu=other_menu
+        )
 
         self.buttons = struct(
-                createCubeMode=createCubeMode, createPolygonMode=createPolygonMode,
-                createCircleMode=createCircleMode, createRectangleMode=createRectangleMode,
-                createLineMode=createLineMode, createPointMode=createPointMode,
-                createPolyLineMode=createPolyLineMode, menu=menu, editMode=editMode,
-                shapeLineColor=shapeLineColor, shapeFillColor=shapeFillColor,
-                fitWindow_button=fitWindow_button, play_button=play_button, delete=delete,
-                previous_button=previous_button, next_button=next_button, undo=undo,
-                usePrevious_botton=usePrevious_botton, full_screen=full_screen
-                )
-
-        self.frameinfo = QSpinBox()
-        self.frameinfo.setSingleStep(1)
-        self.frameinfo.setRange(0,0)
-        self.frameinfo.setAlignment(Qt.AlignCenter)
-        self.frameinfo.setSuffix(' / 0')
-        self.frameinfo.setStatusTip('Go to a frame')
-        self.frameinfo.valueChanged.connect(self.loadFrame)
-
-        self.skipstep = QSpinBox()
-        self.skipstep.setValue(1)
-        self.skipstep.setRange(1,1)
-        self.skipstep.setAlignment(Qt.AlignHCenter)
-        self.skipstep.setSuffix(' frame')
-
-        self.fpsbox = QComboBox()
-        self.fpsbox.addItems(['max', '20', '15', '10', '5', '1'])
-        self.fpsbox.setMaximumSize(QSize(45,20))
-        self.fpsbox.setToolTip('Frame rate')
-        self.fpsbox.setStatusTip('Frame rate')
-
-        self.videoslider = QSlider(Qt.Horizontal)
-        self.videoslider.setValue(0)
-        self.videoslider.setTickPosition(QSlider.TicksBelow)
-        self.videoslider.setTickInterval(1)
-        self.videoslider.valueChanged.connect(self.loadFrame)
-        self.videoslider.setStyleSheet('''
-                             QStatusBar::separator{
-                                background-color: white;
-                              }
-                              QSlider::groove:horizontal {
-                                border: 1px solid white;
-                                height: 3px;
-                                background: lightgray;
-                                border-radius: 2px;
-                             }
-                             QSlider::handle:horizontal {
-                                background: rgba(250,50,50,1.0);
-                                border: none;
-                                width: 8px;
-                                height: 6px;
-                                margin: -3px 0px;
-                                border-radius: 4px;
-                             }
-                             QSlider::handle:horizontal:pressed {
-                                background-color: white;
-                             }
-                             QSlider::handle:horizontal:hover {
-                                background-color: white;
-                             }
-                             QSlider::sub-page:horizontal {
-                                background: rgba(250,50,50,1.0);
-                                height: 3px;
-                                margin: 1px 0;
-                                border-radius: 1px;
-                             }''')
-        self.videoslider.setHidden(True)
+            createCubeMode=createCubeMode, createPolygonMode=createPolygonMode,
+            createCircleMode=createCircleMode, createRectangleMode=createRectangleMode,
+            createLineMode=createLineMode, createPointMode=createPointMode, editMode=editMode,
+            createPolyLineMode=createPolyLineMode, menu=menu, shapeLineColor=shapeLineColor,
+            shapeFillColor=shapeFillColor, delete=delete, undo=undo, full_screen=full_screen
+        )
 
         self.controls = QHBoxLayout()
-        self.controls.setContentsMargins(0,0,5,0)
+        self.controls.setContentsMargins(0, 0, 5, 0)
         self.controls.setAlignment(Qt.AlignLeft)
-
-        self.controls.addWidget(self.buttons.previous_button)
-        self.controls.addWidget(self.buttons.play_button)
-        self.controls.addWidget(self.buttons.next_button)
-        self.controls.addWidget(self.buttons.usePrevious_botton)
-        self.controls.addWidget(self.fpsbox)
-#        self.controls.addWidget(self.skipstep)
-        self.controls.addWidget(self.videoslider)
+        addWidgets(self.controls, self.controls_widgets.controls_menu)
 
         menubar = self.menuBar()
-        menubar.setMaximumHeight(20)
-        fileMenu = menubar.addMenu('&File')
-        addActions(fileMenu, [self.actions.OpenImagefile, self.actions.OpenVideofile,
-                              self.actions.Openfolder, self.actions.Close, self.actions.Quit])
+        menubar.setMaximumHeight(28)
+        openMenu = QMenu('&Open File', self)
+        openMenu.setIcon(newIcon('open'))
 
+        fileMenu = menubar.addMenu('&File')
+        addActions(openMenu, [self.actions.OpenImagefile, self.actions.OpenVideofile])
+        addActions(fileMenu, [openMenu, self.actions.Openfolder, self.actions.Close, None, self.actions.Quit])
         helpmenu = menubar.addMenu('&Help')
-        addActions(helpmenu, [self.actions.aboutqtact])
+        addActions(helpmenu, [self.actions.about_qt])
 
         toolbar = QToolBar('Quick Access')
-        toolbar.setMaximumHeight(30)
-        toolbar.setContentsMargins(0,0,0,0)
-        toolbar.setFloatable(True)
+        toolbar.setMaximumHeight(32)
+        # toolbar.setContentsMargins(0,0,0,0)
+        # toolbar.setFloatable(True)
         toolbar.setMovable(False)
-#        toolbar.setHidden(True)
-#        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        addActions(toolbar, [self.actions.OpenImagefile, self.actions.OpenVideofile,
-                             self.actions.Openfolder, self.actions.Quit])
+        toolbar.setHidden(True)
+        addActions(toolbar, self.actions.toolbar_menu)
+
         self.addToolBar(toolbar)
 
-        self.labelCoordinates = QLabel('')
-        self.progressbar = QProgressBar()
-        self.progressbar.setHidden(True)
-        self.progressbar.setMaximumSize(QSize(150, 16))
         self.timer = QBasicTimer()
-
-        self.statusBar().addPermanentWidget(self.progressbar)
-        self.statusBar().addPermanentWidget(self.labelCoordinates)
-        self.statusBar().addPermanentWidget(QLabel('<b>Skip:</b>'))
-        self.statusBar().addPermanentWidget(self.skipstep)
-        self.statusBar().addPermanentWidget(QLabel('<b>Frame:</b>'))
-        self.statusBar().addPermanentWidget(self.frameinfo)
-        self.statusBar().addPermanentWidget(QLabel('<b>Zoom:</b>'))
-        self.statusBar().addPermanentWidget(self.zoomWidget)
-        self.statusBar().addPermanentWidget(self.buttons.fitWindow_button)
-        self.statusBar().addPermanentWidget(self.buttons.full_screen)
+        for item in self.other_widgets.other_menu:
+            self.statusBar().addPermanentWidget(item)
         self.statusBar().setMaximumHeight(25)
-#        self.setStyleSheet('''
-#                              QProgressBar {
-#                                border-radius: 5px;
-#                                border: 2px solid grey;
-#                                text-align: center;
-#                                margin: 1px 0;
-#                              }
-#                              QProgressBar::chunk {
-#                                background: qlineargradient( x1:0 y1:0, x2:1 y2:0, stop:0 hotpink, stop:1 cornflowerblue);
-#                              }
-#                              QStatusBar {
-#                                background-color: white;
-#                                color: black;
-#                              }
-#                              ''')
 
-        options = QVBoxLayout()
-        addWidgets(options, menu)
-#        for option in menu:
-#              option.setStyleSheet("border-radius: 4px;")
-        options.setAlignment(Qt.AlignHCenter)
-        options.setContentsMargins(0,0,0,0)
-        print(options.spacing())
+        zoom_options = QVBoxLayout()
+        addWidgets(zoom_options, self.zoom_widgets.zoom_menu)
+        zoom_options.setAlignment(Qt.AlignHCenter)
 
-        jointlayout = QHBoxLayout()
-        jointlayout.setAlignment(Qt.AlignHCenter)
-        jointlayout.setContentsMargins(0,0,0,0)
-        jointlayout.addLayout(options)
-        jointlayout.addWidget(self.scrollArea)
+        drawing_options = QVBoxLayout()
+        drawing_options.addStretch(1)
+        addWidgets(drawing_options, menu)
+        drawing_options.addStretch(1)
+        drawing_options.addLayout(zoom_options)
+        drawing_options.addStretch(1)
+        drawing_options.addWidget(self.buttons.full_screen)
+        drawing_options.addStretch(1)
+        drawing_options.setAlignment(Qt.AlignHCenter)
+        drawing_options.setContentsMargins(0, 0, 0, 0)
 
-        self.layout = QVBoxLayout()
-        self.layout.setContentsMargins(5,0,0,0)
-#        self.layout.addWidget(self.scrollArea)
-        self.layout.addLayout(jointlayout)
-        self.layout.addLayout(self.controls)
+        self.scrollArea = scroll
+        self.vlayout = QVBoxLayout()
+        self.vlayout.setContentsMargins(0, 5, 5, 5)
+        self.vlayout.addWidget(self.scrollArea)
+        self.vlayout.addLayout(self.controls)
+
+        hlayout = QHBoxLayout()
+        hlayout.setAlignment(Qt.AlignHCenter)
+        hlayout.setContentsMargins(5, 0, 0, 0)
+        hlayout.addLayout(drawing_options)
+        hlayout.addLayout(self.vlayout)
 
         window = QWidget()
-        window.setLayout(self.layout)
+        window.setLayout(hlayout)
         self.setCentralWidget(window)
 
-#        self.propertydock = QDockWidget("Property" ,self)
-#        self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
-#        self.propertydock.setFeatures(self.propertydock.features() ^ self.dockFeatures)
+        #        self.propertydock = QDockWidget("Property" ,self)
+        #        self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
+        #        self.propertydock.setFeatures(self.propertydock.features() ^ self.dockFeatures)
 
-#        self.addDockWidget(Qt.RightDockWidgetArea ,self.propertydock)
-#        self.propertydock.setWidget(self.labelwidget)
+        #        self.addDockWidget(Qt.RightDockWidgetArea ,self.propertydock)
+        #        self.propertydock.setWidget(self.labelwidget)
 
         self.zoomWidget.setEnabled(False)
-        self.frameinfo.setEnabled(False)
-        self.skipstep.setEnabled(False)
+        self.other_widgets.frameinfo.setEnabled(False)
+        self.other_widgets.skipstep.setEnabled(False)
         self.setControlsHidden(True)
         self.showMaximized()
-#        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
 
+    #        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
 
     def closeFile(self):
         pass
 
     def openFile(self, filetype='video-file'):
         if filetype == 'video-file':
-            filename = QFileDialog.getOpenFileName(self, '%s - Open video file' % __appname__, '',
-                'Video Files (*.avi *.mp4)',None, QFileDialog.DontUseNativeDialog)[0]
+            filename = QFileDialog.getOpenFileName(QFileDialog(), '%s - Open video file' % app_name, '',
+                                                   'Video Files (*.avi *.mp4)', None, QFileDialog.DontUseNativeDialog)[
+                0]
             if os.path.isfile(filename):
-#                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
+                #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
 
         elif filetype == 'image-file':
-            filename = QFileDialog.getOpenFileName(self, '%s - Open image file' % __appname__, '',
-                'Image Files (*.jpg *.jpeg *.jpe *.jp2 *.png *.bmp *.tif *.tiff)', None, QFileDialog.DontUseNativeDialog)[0]
+            filename = QFileDialog.getOpenFileName(QFileDialog(), '%s - Open image file' % app_name, '',
+                                                   'Image Files (*.jpg *.jpeg *.jpe *.jp2 *.png *.bmp *.tif *.tiff)',
+                                                   None, QFileDialog.DontUseNativeDialog)[0]
             if os.path.isfile(filename):
-#                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
+                #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
 
         elif filetype == 'image-folder':
             targetDirPath = str(QFileDialog.getExistingDirectory(
-                    self, '%s - Open Folder' % __appname__,'',
-                    QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks | QFileDialog.DontUseNativeDialog))
+                QFileDialog(), '%s - Open Folder' % app_name, '',
+                               QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks | QFileDialog.DontUseNativeDialog))
             if os.path.isdir(targetDirPath):
                 self.loadDirImages(targetDirPath)
 
     def closeEvent(self, event):
-        self.reply = QMessageBox.question(self, 'Confirm Exit',
-            "Are you sure to Quit ?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        msgbox = QMessageBox()
+        reply = msgbox.question(self, 'Confirm Exit',
+                                "Are you sure to Quit ?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
 
-        if self.reply == QMessageBox.Yes:
+        if reply == QMessageBox.Yes:
             if self.imageditor.isVisible():
                 self.imageditor.close()
-            if self.video and  self.video.isOpened():
+            if self.video and self.video.isOpened():
                 self.video.release()
                 cv2.destroyAllWindows()
 
@@ -1857,14 +1873,16 @@ class MainWindow(QMainWindow):
         else:
             event.ignore()
 
-    def queueEvent(self, function):
+    @staticmethod
+    def queueEvent(function):
         QTimer.singleShot(0, function)
 
     def openImagEditor(self):
         self.imageditor.show()
         pass
 
-    def convertToQImage(self, imageData):
+    @staticmethod
+    def convertToQImage(imageData):
         if type(imageData) == np.ndarray:
             image = np.copy(imageData)
             if len(image.shape) < 3 or image.shape[2] == 1:
@@ -1882,17 +1900,18 @@ class MainWindow(QMainWindow):
 
         return QImage()
 
-    def readVideo(self, FilePath):
+    @staticmethod
+    def readVideo(FilePath):
         return cv2.VideoCapture(FilePath)
 
     def loadPreviousFrameShapes(self):
         print("use previous doesnot work")
 
     def updatePixmap(self, current, total):
-        if not current == self.frameinfo.value():
-            self.frameinfo.setValue(current)
-        if not current == self.videoslider.value():
-            self.videoslider.setValue(current)
+        if not current == self.other_widgets.frameinfo.value():
+            self.other_widgets.frameinfo.setValue(current)
+        if not current == self.controls_widgets.videoslider.value():
+            self.controls_widgets.videoslider.setValue(current)
 
         if self.videobuffer:
             self.cvimage = self.videobuffer[current]
@@ -1902,7 +1921,8 @@ class MainWindow(QMainWindow):
 
         pass
 
-    def isCompatible(self, file, filetype='img'):
+    @staticmethod
+    def isCompatible(file, filetype='img'):
         if filetype == 'img':
             compatible_file_formats = [".jpg", ".jpeg", ".jpe", ".jp2", ".png", ".bmp", ".tif", ".tiff"]
         elif filetype == 'vid':
@@ -1910,19 +1930,20 @@ class MainWindow(QMainWindow):
         else:
             assert False, "unsupported filetype"
 
-        name,ext = os.path.splitext(os.path.split(file)[1])
-        compatible_file_formats = compatible_file_formats + [file_format.upper() for file_format in compatible_file_formats]
+        name, ext = os.path.splitext(os.path.split(file)[1])
+        compatible_file_formats = compatible_file_formats + [file_format.upper() for file_format in
+                                                             compatible_file_formats]
         if ext in compatible_file_formats:
             return True
         return False
 
     def timerEvent(self, event):
-        if not self.progressbar.isHidden() and self.value >= 100:
+        if not self.other_widgets.progressbar.isHidden() and self.value >= 100:
             self.timer.stop()
-            self.progressbar.setHidden(True)
-            self.progressbar.setValue(0)
-        if not self.progressbar.isHidden():
-            self.progressbar.setValue(int(self.value))
+            self.other_widgets.progressbar.setHidden(True)
+            self.other_widgets.progressbar.setValue(0)
+        if not self.other_widgets.progressbar.isHidden():
+            self.other_widgets.progressbar.setValue(int(self.value))
 
     def loadFile(self, Path):
         self.filePath = Path
@@ -1930,26 +1951,26 @@ class MainWindow(QMainWindow):
         self.resetState()
         self.loadPixmapToCanvas()
         self.canvas.setEnabled(False)
-        if self.isCompatible(Path, filetype = 'vid') and self.video is None:
+        if self.isCompatible(Path, filetype='vid') and self.video is None:
             self.video = self.readVideo(Path)
             self.videobuffer = []
             self.temp = []
             self.imagefiles = []
             self.totalframes = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
             if self.totalframes > 2000:
-                QMessageBox.critical(self, 'Error',"Larger videos  are not supported in this version")
+                QMessageBox.critical(self, 'Error', "Larger videos  are not supported in this version")
                 self.video.release()
                 cv2.destroyAllWindows()
                 self.loadPixmapToCanvas()
                 self.paintCanvas()
                 return
             self.frameNum = 0
-            self.progressbar.setHidden(False)
+            self.other_widgets.progressbar.setHidden(False)
             self.timer.start(100, self)
             while self.video.isOpened():
                 self.video.set(15, self.frameNum)
                 ret, frame = self.video.read()
-                self.value = (self.frameNum/self.totalframes)*100
+                self.value = (self.frameNum / self.totalframes) * 100
                 QCoreApplication.processEvents()
                 if ret is True:
                     if len(self.temp) >= 500:
@@ -1966,23 +1987,21 @@ class MainWindow(QMainWindow):
             self.video = None
             self.setControlsHidden(False)
             self.frameNum, self.totalframes = 0, len(self.videobuffer)
-            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
-            self.videoslider.setRange(self.frameNum, self.totalframes-1)
-            self.skipstep.setRange(self.frameNum+1, self.totalframes-1)
-            self.frameinfo.setRange(self.frameNum, self.totalframes-1)
-            self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
-#            self.videoslider.setHidden(False)
+            self.frameUpdated.emit(self.frameNum, self.totalframes - 1)
+            self.controls_widgets.videoslider.setRange(self.frameNum, self.totalframes - 1)
+            self.other_widgets.skipstep.setRange(self.frameNum + 1, self.totalframes - 1)
+            self.other_widgets.frameinfo.setRange(self.frameNum, self.totalframes - 1)
+            self.other_widgets.frameinfo.setSuffix(' / {}'.format(self.totalframes - 1))
 
-        elif self.isCompatible(Path,filetype = 'img'):
+        elif self.isCompatible(Path, filetype='img'):
             self.setControlsHidden(True)
             self.frameNum, self.totalframes = 0, 1
             self.frameUpdated.emit(0, 1)
             self.cvimage = cv2.imread(Path)
             self.image = self.convertToQImage(self.cvimage)
-#            self.videoslider.setHidden(True)
 
         else:
-            assert False,"unsupported image"
+            assert False, "unsupported image"
         self.loadPixmapToCanvas()
         self.paintCanvas()
 
@@ -1990,17 +2009,17 @@ class MainWindow(QMainWindow):
         files = os.listdir(dirpath)
         self.dirPath = dirpath
         filteredfiles = []
-        #formats = [".%s"%fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
-        for  file in files:
-            if self.isCompatible(file,filetype = 'img'):
+        # formats = [".%s"%fmt.data().decode("ascii").lower() for fmt in QImageReader.supportedImageFormats()]
+        for file in files:
+            if self.isCompatible(file, filetype='img'):
                 filteredfiles.append(file)
 
-        files_sortkeys = natsort.natsort_keygen(alg = natsort.ns.INT)
-        filteredfiles.sort(key = files_sortkeys)
+        files_sortkeys = natsort.natsort_keygen(alg=natsort.ns.INT)
+        filteredfiles.sort(key=files_sortkeys)
         self.imagefiles = []
         self.videobuffer = []
         for file in filteredfiles:
-            imagepath = os.path.abspath(os.path.join(dirpath,file))
+            imagepath = os.path.abspath(os.path.join(dirpath, file))
             if os.path.isfile(imagepath):
                 self.imagefiles.append(imagepath)
 
@@ -2008,16 +2027,14 @@ class MainWindow(QMainWindow):
 
         if not self.totalframes == 0:
             self.setControlsHidden(False)
-            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
-            self.videoslider.setRange(self.frameNum,self.totalframes-1)
-            self.frameinfo.setRange(self.frameNum, self.totalframes-1)
-            self.skipstep.setRange(self.frameNum+1,self.totalframes-1)
-            self.frameinfo.setSuffix(' / {}'.format(self.totalframes-1))
-#            self.videoslider.setHidden(False)
+            self.frameUpdated.emit(self.frameNum, self.totalframes - 1)
+            self.controls_widgets.videoslider.setRange(self.frameNum, self.totalframes - 1)
+            self.other_widgets.frameinfo.setRange(self.frameNum, self.totalframes - 1)
+            self.other_widgets.skipstep.setRange(self.frameNum + 1, self.totalframes - 1)
+            self.other_widgets.frameinfo.setSuffix(' / {}'.format(self.totalframes - 1))
         else:
             self.setControlsHidden(True)
             self.frameUpdated.emit(0, 1)
-#            self.videoslider.setHidden(True)
             QMessageBox.warning(self, 'Warning', "No images found")
         self.loadPixmapToCanvas()
         self.paintCanvas()
@@ -2027,36 +2044,35 @@ class MainWindow(QMainWindow):
         if not self.image.isNull():
             self.toggleActions(True)
             value = self.scalers[self.FIT_WINDOW]()
-            self.zoomWidget.setRange(100*value,self.zoomWidget.maximum())
+            self.zoomWidget.setRange(100 * value, self.zoomWidget.maximum())
         else:
             self.toggleActions(False)
 
     def setControlsHidden(self, hide=True):
         if hide:
-            self.layout.removeItem(self.controls)
+            self.vlayout.removeItem(self.controls)
         else:
-            self.layout.addLayout(self.controls)
+            self.vlayout.addLayout(self.controls)
 
-        self.buttons.previous_button.setVisible(not hide)
-        self.buttons.play_button.setVisible(not hide)
-        self.buttons.next_button.setVisible(not hide)
-        self.buttons.usePrevious_botton.setVisible(not hide)
-        self.fpsbox.setVisible(not hide)
-        self.videoslider.setVisible(not hide)
+        self.controls_widgets.previous_button.setVisible(not hide)
+        self.controls_widgets.play_button.setVisible(not hide)
+        self.controls_widgets.next_button.setVisible(not hide)
+        self.controls_widgets.fpsbox.setVisible(not hide)
+        self.controls_widgets.videoslider.setVisible(not hide)
 
     def loadFrame(self, value):
         if self.play_status is True:
             return
         self.frameNum = value
-        self.frameUpdated.emit(value, self.totalframes-1)
+        self.frameUpdated.emit(value, self.totalframes - 1)
         self.loadPixmapToCanvas()
 
     def loadNextframe(self):
-        canload = (self.videobuffer or self.imagefiles) and (self.frameNum+1 < self.totalframes)
+        canload = (self.videobuffer or self.imagefiles) and (self.frameNum + 1 < self.totalframes)
         if canload:
-            step = self.skipstep.value()
+            step = self.other_widgets.skipstep.value()
             self.frameNum += step
-            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
+            self.frameUpdated.emit(self.frameNum, self.totalframes - 1)
             self.loadPixmapToCanvas()
             if self.imageditor.isVisible():
                 self.imageditor.updateSettings()
@@ -2064,29 +2080,27 @@ class MainWindow(QMainWindow):
         return False
 
     def loadPreviousframe(self):
-        canload = (self.videobuffer or self.imagefiles) and (self.frameNum-1 >= 0)
+        canload = (self.videobuffer or self.imagefiles) and (self.frameNum - 1 >= 0)
         if canload:
-            step = self.skipstep.value()
+            step = self.other_widgets.skipstep.value()
             self.frameNum -= step
-            self.frameUpdated.emit(self.frameNum, self.totalframes-1)
+            self.frameUpdated.emit(self.frameNum, self.totalframes - 1)
             self.loadPixmapToCanvas()
             if self.imageditor.isVisible():
                 self.imageditor.updateSettings()
             return True
         return False
 
-
-    def togglePlayMode(self, status = True):
-        self.videoslider.setEnabled(not status)
-        self.buttons.previous_button.setEnabled(not status)
-        self.buttons.next_button.setEnabled(not status)
-        self.buttons.usePrevious_botton.setEnabled(not status)
-        self.fpsbox.setEnabled(not status)
-        self.frameinfo.setEnabled(not status)
+    def togglePlayMode(self, status=True):
+        self.controls_widgets.videoslider.setEnabled(not status)
+        self.controls_widgets.previous_button.setEnabled(not status)
+        self.controls_widgets.next_button.setEnabled(not status)
+        self.controls_widgets.fpsbox.setEnabled(not status)
+        self.other_widgets.frameinfo.setEnabled(not status)
         if status is True:
-            self.buttons.play_button.setIcon(newIcon('pause'))
+            self.controls_widgets.play_button.setIcon(newIcon('pause'))
         else:
-            self.buttons.play_button.setIcon(newIcon('play'))
+            self.controls_widgets.play_button.setIcon(newIcon('play'))
 
     def toggleDrawingSensitive(self, drawing=True):
         """In the middle of drawing, toggling between modes should be disabled."""
@@ -2102,7 +2116,7 @@ class MainWindow(QMainWindow):
         self.buttons.createPointMode.setEnabled(not drawing)
         self.buttons.createPolyLineMode.setEnabled(not drawing)
         if not drawing:
-            self.toggleDrawMode(edit= drawing,createMode=self.canvas.createMode)
+            self.toggleDrawMode(edit=drawing, createMode=self.canvas.createMode)
 
     def toggleDrawMode(self, edit=True, createMode='polygon'):
         self.canvas.setEditing(edit)
@@ -2182,7 +2196,8 @@ class MainWindow(QMainWindow):
         if color:
             self.canvas.selectedShape.line_color = color
             self.canvas.update()
-#            self.setDirty()
+
+    #            self.setDirty()
 
     def chshapeFillColor(self):
         color = self.colorDialog.getColor(
@@ -2190,16 +2205,17 @@ class MainWindow(QMainWindow):
         if color:
             self.canvas.selectedShape.fill_color = color
             self.canvas.update()
-#            self.setDirty()
+
+    #            self.setDirty()
 
     def setEditMode(self):
         self.toggleDrawMode(True)
 
     def Play(self):
         canload = (self.videobuffer or self.imagefiles) and not self.play_status
-        selection = self.fpsbox.currentText()
-        fps = int(selection) if not selection == 'max' else 100
-        fconst = 1/int(round((5*(fps/2))))
+        selection = self.controls_widgets.fpsbox.currentText()
+        fps = int(selection) if not selection == '30+' else 100
+        fconst = 1 / int(round((5 * (fps / 2))))
         if canload:
             self.play_status = True
             self.togglePlayMode(True)
@@ -2229,12 +2245,12 @@ class MainWindow(QMainWindow):
                 self.frameNum += 1
                 if not abs(fstart - time.time()) >= fconst:
                     time.sleep(abs(fstart - time.time() - fconst))
-                self.frameinfo.setValue(self.frameNum)
-                self.videoslider.setValue(self.frameNum)
+                self.other_widgets.frameinfo.setValue(self.frameNum)
+                self.controls_widgets.videoslider.setValue(self.frameNum)
                 QCoreApplication.processEvents()
             self.frameNum = 0
-            self.frameinfo.setValue(self.frameNum)
-            self.videoslider.setValue(self.frameNum)
+            self.other_widgets.frameinfo.setValue(self.frameNum)
+            self.controls_widgets.videoslider.setValue(self.frameNum)
             self.play_status = False
             self.togglePlayMode(False)
             if self.imagefiles and len(self.imagefiles) == len(self.videobuffer):
@@ -2245,6 +2261,7 @@ class MainWindow(QMainWindow):
 
     def toggleFullscreen(self):
         if self.isFullScreen() is True:
+            self.showNormal()
             self.showMaximized()
         else:
             self.showFullScreen()
@@ -2253,12 +2270,14 @@ class MainWindow(QMainWindow):
         """Enable/Disable widgets which depend on an opened image."""
         self.zoomWidget.setEnabled(value)
         if self.videobuffer or self.imagefiles:
-            self.skipstep.setEnabled(value)
-            self.frameinfo.setEnabled(value)
+            self.other_widgets.skipstep.setEnabled(value)
+            self.other_widgets.frameinfo.setEnabled(value)
         else:
-            self.skipstep.setEnabled(False)
-            self.frameinfo.setEnabled(False)
-        self.buttons.fitWindow_button.setEnabled(value)
+            self.other_widgets.skipstep.setEnabled(False)
+            self.other_widgets.frameinfo.setEnabled(False)
+        for zoom_widget in [self.zoom_widgets.zoom_in, self.zoom_widgets.zoom_out, self.zoom_widgets.zoom_to_extents,
+                            self.zoom_widgets.zoom_to_actual_size]:
+            zoom_widget.setEnabled(value)
         for action in self.actions.onLoadActive:
             action.setEnabled(value)
 
@@ -2272,7 +2291,8 @@ class MainWindow(QMainWindow):
     @Slot()
     def newShape(self):
         pass
-#            print("hhh")
+
+    #            print("hhh")
 
     def shapeMoved(self):
         for shape in self.canvas.shapes:
@@ -2285,12 +2305,12 @@ class MainWindow(QMainWindow):
     def deleteSelectedShape(self):
         deletedShape = self.canvas.deleteSelected()
         if deletedShape is not None:
-#            print(deletedShape.Id,"deleted")
+            #            print(deletedShape.Id,"deleted")
             pass
 
     def undoDeletetion(self):
-#        self.canvas.undoDeletion()
-#        self.canvas.deSelectShape()
+        #        self.canvas.undoDeletion()
+        #        self.canvas.deSelectShape()
         pass
 
     def resetState(self):
@@ -2298,12 +2318,12 @@ class MainWindow(QMainWindow):
         self.imageData = None
         self.labelFile = None
         self.canvas.resetState()
-        self.labelCoordinates.clear()
+        self.other_widgets.labelCoordinates.clear()
 
     def resizeEvent(self, event):
         try:
-            if self.canvas and not self.image.isNull()\
-               and self.zoomMode != self.MANUAL_ZOOM:
+            if self.canvas and not self.image.isNull() \
+                    and self.zoomMode != self.MANUAL_ZOOM:
                 self.adjustScale()
         except AttributeError:
             pass
@@ -2311,19 +2331,28 @@ class MainWindow(QMainWindow):
 
     def paintCanvas(self):
         if not self.image.isNull():
-            self.canvas.scale = 0.01 * self.zoomWidget.value()
-            self.canvas.epsilon = 10.0 /self.canvas.scale if self.canvas.scale >= 1.0 else 10.0
+            value = self.zoomWidget.value()
+            if int(value) <= int(self.zoomWidget.minimum()):
+                self.zoom_widgets.zoom_out.setEnabled(False)
+            else:
+                self.zoom_widgets.zoom_out.setEnabled(True)
+            if int(value) >= int(self.zoomWidget.maximum()):
+                self.zoom_widgets.zoom_in.setEnabled(False)
+            else:
+                self.zoom_widgets.zoom_in.setEnabled(True)
+            self.canvas.scale = 0.01 * value
+            self.canvas.epsilon = 10.0 / self.canvas.scale if self.canvas.scale >= 1.0 else 10.0
             self.canvas.adjustSize()
             self.canvas.update()
 
     def adjustScale(self, initial=False):
         value = self.scalers[self.FIT_WINDOW if initial else self.zoomMode]()
-        self.zoomWidget.setRange(100*self.scalers[self.FIT_WINDOW](),self.zoomWidget.maximum())
+        self.zoomWidget.setRange(100 * self.scalers[self.FIT_WINDOW](), self.zoomWidget.maximum())
         self.zoomWidget.setValue(100 * value)
 
     def scaleFitWindow(self):
         """Figure out the size of the pixmap in order to fit the main widget."""
-        e = 4.0  # So that no scrollbars are generated.
+        e = 10.0  # So that no scrollbars are generated.
         w1 = self.scrollArea.width() - e
         h1 = self.scrollArea.height() - e
         a1 = w1 / h1
@@ -2344,32 +2373,40 @@ class MainWindow(QMainWindow):
         bar.setValue(bar.value() + bar.singleStep() * units)
 
     def updateScrollPos(self):
-        self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(),self.scrollBars[Qt.Vertical].value()
+        self.previous_Scroll_pos = self.scrollBars[Qt.Horizontal].value(), self.scrollBars[Qt.Vertical].value()
 
     def setScrollbarPos(self):
         self.scrollBars[Qt.Horizontal].setValue(self.previous_Scroll_pos[0])
         self.scrollBars[Qt.Vertical].setValue(self.previous_Scroll_pos[1])
 
     def setZoom(self, value):
+        if int(value) <= int(self.zoomWidget.minimum()):
+            self.zoom_widgets.zoom_out.setEnabled(False)
+        else:
+            self.zoom_widgets.zoom_out.setEnabled(True)
+        if int(value) >= int(self.zoomWidget.maximum()):
+            self.zoom_widgets.zoom_in.setEnabled(False)
+        else:
+            self.zoom_widgets.zoom_in.setEnabled(True)
         self.zoomMode = self.MANUAL_ZOOM
         self.zoomWidget.setValue(value)
 
-    def addZoom(self, increment=10):
-        self.setZoom(self.zoomWidget.value() + increment)
-
-    @Slot(int, QPoint)
-    def zoomRequest(self, delta,pos):
-        canvas_width_old = self.canvas.width()
-        units = 1
-        if delta < 0 :
-            units = -1
+    def addZoom(self, units=1):
         step = 10
         if not self.zoomWidget.value() == self.zoomWidget.minimum():
-            step = (self.zoomWidget.value() - self.zoomWidget.minimum())/10
+            step = (self.zoomWidget.value() - self.zoomWidget.minimum()) / 10
+            if step < 10:
+                step = 10
+        self.setZoom(self.zoomWidget.value() + units * step)
 
-        self.addZoom(units*step)
+    @Slot(int, QPoint)
+    def zoomRequest(self, delta, pos):
+        canvas_width_old = self.canvas.width()
+        units = 1
+        if delta < 0:
+            units = -1
 
-#        self.zoomWidget.setSingleStep(step)
+        self.addZoom(units)
 
         canvas_width_new = self.canvas.width()
         if canvas_width_old != canvas_width_new:
@@ -2381,7 +2418,6 @@ class MainWindow(QMainWindow):
             self.scrollBars[Qt.Vertical].setValue(self.scrollBars[Qt.Vertical].value() + y_shift)
 
     def setFitWindow(self, value=True):
-        self.buttons.fitWindow_button.setChecked(value)
         self.zoomMode = self.FIT_WINDOW if value else self.MANUAL_ZOOM
         self.adjustScale()
 
@@ -2389,10 +2425,11 @@ class MainWindow(QMainWindow):
         self.zoomMode = self.FIT_WIDTH if value else self.MANUAL_ZOOM
         self.adjustScale()
 
+
 class ZoomWidget(QSpinBox):
     def __init__(self, value=100):
         super(ZoomWidget, self).__init__()
-#        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        #        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.setRange(1, 10000)
         self.setSingleStep(20)
         self.setSuffix(' %')
@@ -2407,11 +2444,11 @@ class ZoomWidget(QSpinBox):
         width = fm.width(str(self.maximum()))
         return QSize(width, height)
 
-class LabelWidget(QWidget):
 
+class LabelWidget(QWidget):
     labelUpdated = Signal(dict)
 
-    def __init__(self,*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         self.property_type = kwargs.pop('property_type', 'bbox')
         super(LabelWidget, self).__init__(*args, **kwargs)
         self.objectclass = dict()
@@ -2422,41 +2459,42 @@ class LabelWidget(QWidget):
 
     def initWidget(self):
         self.maingrid = QGridLayout()
-        self.populateGrid(self.maingrid,self.objectclass)
+        self.populateGrid(self.maingrid, self.objectclass)
         self.Layout = QVBoxLayout()
         self.Layout.addLayout(self.maingrid)
         self.setLayout(self.Layout)
-#        self.setFixedSize(self.sizeHint())
+
+    #        self.setFixedSize(self.sizeHint())
 
     def populateGrid(self, gridlayout, sourcedict):
-        for i, items in  enumerate(sourcedict.items()):
+        for i, items in enumerate(sourcedict.items()):
             mainclass, values = items
             subclass = [list(value)[0] for value in values]
             gridlayout.addWidget(QLabel(mainclass), i, 0)
             cbox = QComboBox()
-            cbox.currentTextChanged.connect(lambda:self.populatelayerOne(gridlayout, values))
+            cbox.currentTextChanged.connect(lambda: self.populatelayerOne(gridlayout, values))
             cbox.addItems(subclass)
-            gridlayout.addWidget(cbox, i,1)
+            gridlayout.addWidget(cbox, i, 1)
 
     def populatelayerOne(self, gridlayout, sourcedict):
         sender = self.sender()
         selectionIndex = sender.currentIndex()
         selectionText = sender.currentText()
         count, row, col = gridlayout.count(), gridlayout.rowCount(), gridlayout.columnCount()
-        for i in range(1,row):
-            for j in range(1,col):
-                item = gridlayout.itemAtPosition(i,j)
+        for i in range(1, row):
+            for j in range(1, col):
+                item = gridlayout.itemAtPosition(i, j)
                 item.widget()
-        for i,items in enumerate(sourcedict[selectionIndex][selectionText].items()):
+        for i, items in enumerate(sourcedict[selectionIndex][selectionText].items()):
             subsel, values = items
             row = gridlayout.rowCount()
             print(subsel, list(values))
             name = QLabel(subsel)
             gridlayout.addWidget(name, row, 1)
             cbox = QComboBox()
-            cbox.currentTextChanged.connect(lambda:self.populatelayerTwo(gridlayout, values))
+            cbox.currentTextChanged.connect(lambda: self.populatelayerTwo(gridlayout, values))
             cbox.addItems(values)
-            gridlayout.addWidget(cbox, row,2)
+            gridlayout.addWidget(cbox, row, 2)
             self.temp.append(name)
             self.temp.append(cbox)
 
@@ -2470,10 +2508,11 @@ class LabelWidget(QWidget):
             with open("labels/object_labels.json") as json_file:
                 self.objectclass = json.load(json_file)
 
+
 class ImageEditor(QDialog):
-    def __init__(self,parent=None):
+    def __init__(self, parent=None):
         super(ImageEditor, self).__init__(parent)
-        self.setFixedSize(QSize(300,180))
+        self.setFixedSize(QSize(350, 200))
         self.setWindowTitle("Image Enhancer")
         settingGroup = QGroupBox("Enhance Image Settings")
 
@@ -2483,26 +2522,27 @@ class ImageEditor(QDialog):
         colorLabel, color = QLabel("Color :"), QSlider(Qt.Horizontal)
         edgelabel, edge = QLabel("Edge :"), QSlider(Qt.Horizontal)
 
-        for slider,slot in zip([brightness,contrast,sharpness, color, edge], [self.updateSettings]*5):
+        for slider, slot in zip([brightness, contrast, sharpness, color, edge], [self.updateSettings] * 5):
             self.setSliderProperty(slider, slot)
 
         restorebutton = newButton(self, '&Restore Defaults', self.restore, None,
                                   None, 'restore', style=Qt.ToolButtonTextBesideIcon)
 
         self.settinglayout = QGridLayout()
-        addWidgets(self.settinglayout, [(brightnessLabel,0,0), (brightness,0,1),
-                                   (contrastLabel,1,0), (contrast,1,1),
-                                   (sharpnessLabel,2,0), (sharpness,2,1),
-                                   (colorLabel,3,0), (color,3,1), (edgelabel,4,0), (edge,4,1)])
+        addWidgets(self.settinglayout, [(brightnessLabel, 0, 0), (brightness, 0, 1),
+                                        (contrastLabel, 1, 0), (contrast, 1, 1),
+                                        (sharpnessLabel, 2, 0), (sharpness, 2, 1),
+                                        (colorLabel, 3, 0), (color, 3, 1), (edgelabel, 4, 0), (edge, 4, 1)])
         settingGroup.setLayout(self.settinglayout)
 
         layout = QVBoxLayout()
-        addWidgets(layout, [settingGroup,restorebutton])
+        addWidgets(layout, [settingGroup, restorebutton])
         self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color, edge=edge)
         self.setLayout(layout)
 
-    def setSliderProperty(self,slider, slot):
-        slider.setRange(0,200)
+    @staticmethod
+    def setSliderProperty(slider, slot):
+        slider.setRange(0, 200)
         slider.setValue(100)
         slider.setTickPosition(QSlider.TicksBelow)
         slider.setTickInterval(100)
@@ -2519,21 +2559,20 @@ class ImageEditor(QDialog):
         contrastvalue = self.settings.contrast.value()
         sharpnessvalue = self.settings.sharpness.value()
         colorvalue = self.settings.color.value()
-        edgevalue = (255*self.settings.edge.value()/200)
+        edgevalue = (255 * self.settings.edge.value() / 200)
 
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         if not int(edgevalue) == 127:
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-            image = cv2.medianBlur(image,5)
-            image = cv2.Canny(gray,127,edgevalue)
-            image  = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-
+            image = cv2.medianBlur(image, 5)
+            image = cv2.Canny(gray, 127, edgevalue)
+            image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
         pilimage = Image.fromarray(image)
-        pilimage = ImageEnhance.Brightness(pilimage).enhance(brightnesvalue/100)
-        pilimage = ImageEnhance.Contrast(pilimage).enhance(contrastvalue/100)
-        pilimage = ImageEnhance.Sharpness(pilimage).enhance(sharpnessvalue/100)
-        pilimage = ImageEnhance.Color(pilimage).enhance(colorvalue/100)
+        pilimage = ImageEnhance.Brightness(pilimage).enhance(brightnesvalue / 100)
+        pilimage = ImageEnhance.Contrast(pilimage).enhance(contrastvalue / 100)
+        pilimage = ImageEnhance.Sharpness(pilimage).enhance(sharpnessvalue / 100)
+        pilimage = ImageEnhance.Color(pilimage).enhance(colorvalue / 100)
 
         shapes = window.canvas.shapes
         window.image = ImageQt.ImageQt(pilimage)
@@ -2546,6 +2585,7 @@ class ImageEditor(QDialog):
         self.settings.sharpness.setValue(100)
         self.settings.color.setValue(100)
         self.settings.edge.setValue(100)
+
 
 class ColorDialog(QColorDialog):
     def __init__(self, parent=None):
@@ -2574,6 +2614,7 @@ class ColorDialog(QColorDialog):
                 QDialogButtonBox.ResetRole and self.default:
             self.setCurrentColor(self.default)
 
+
 class struct(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
@@ -2581,9 +2622,10 @@ class struct(object):
     def __getitem__(self, key):
         return self.__dict__[key]
 
+
 def newButton(parent, text, slot=None, shortcut=None, icon=None,
-              tip=None, checkable=False, enabled=True,stylesheet=None,
-              style=None,IconSize=None):
+              tip=None, checkable=False, enabled=True, stylesheet=None,
+              style=None, iconSize=None):
     """Create a new button and assign callbacks, shortcuts, etc."""
     b = QToolButton(parent)
     if type(text) is str:
@@ -2592,14 +2634,14 @@ def newButton(parent, text, slot=None, shortcut=None, icon=None,
         b.setIcon(newIcon(icon))
     if shortcut is not None:
         if isinstance(shortcut, (list, tuple)):
-            b.setShortcuts(shortcut)
+            b.setShortcut(shortcut[0])
             if tip is not None:
-                b.setToolTip(tip+'\n'+"Shortcut: "+ shortcut)
+                b.setToolTip(tip + '\n' + "Shortcut: " + shortcut[-1])
                 b.setStatusTip(tip)
         else:
             b.setShortcut(shortcut)
             if tip is not None:
-                b.setToolTip(tip+'\n'+"Shortcut: "+ shortcut)
+                b.setToolTip(tip + '\n' + "Shortcut: " + shortcut)
                 b.setStatusTip(tip)
     if tip is not None and shortcut is None:
         b.setToolTip(tip)
@@ -2612,10 +2654,11 @@ def newButton(parent, text, slot=None, shortcut=None, icon=None,
         b.setStyleSheet(stylesheet)
     if style is not None:
         b.setToolButtonStyle(style)
-    if IconSize is not None:
-        b.setIconSize(IconSize)
+    if iconSize is not None:
+        b.setIconSize(iconSize)
     b.setEnabled(enabled)
     return b
+
 
 def newAction(parent, text, slot=None, shortcut=None, icon=None,
               tip=None, checkable=False, enabled=True):
@@ -2628,12 +2671,12 @@ def newAction(parent, text, slot=None, shortcut=None, icon=None,
         if isinstance(shortcut, (list, tuple)):
             a.setShortcuts(shortcut)
             if tip is not None:
-                a.setToolTip(tip+'\n'+"Shortcut: "+ shortcut)
+                a.setToolTip(tip + '\n' + "Shortcut: " + shortcut[-1])
                 a.setStatusTip(tip)
         else:
             a.setShortcut(shortcut)
             if tip is not None:
-                a.setToolTip(tip+'\n'+"Shortcut: "+ shortcut)
+                a.setToolTip(tip + '\n' + "Shortcut: " + shortcut)
                 a.setStatusTip(tip)
     if tip is not None and shortcut is None:
         a.setToolTip(tip)
@@ -2645,6 +2688,7 @@ def newAction(parent, text, slot=None, shortcut=None, icon=None,
     a.setEnabled(enabled)
     return a
 
+
 def addActions(widget, actions):
     for action in actions:
         if action is None:
@@ -2654,21 +2698,26 @@ def addActions(widget, actions):
         else:
             widget.addAction(action)
 
+
 def addWidgets(layout, widgets):
     for widget in widgets:
         if isinstance(layout, QGridLayout):
-            layout.addWidget(widget[0],*widget[1:])
+            layout.addWidget(widget[0], *widget[1:])
         elif isinstance(widget, QWidget):
             layout.addWidget(widget)
 
+
 def newIcon(icon):
-    return QIcon(os.path.join(__icondir,'%s.png' % icon))
+    return QIcon(os.path.join(icondir, '%s.png' % icon))
+
 
 def distance(p):
     return math.sqrt(p.x() * p.x() + p.y() * p.y())
 
-def distancetopoint(p1,p2):
-    return math.sqrt((p1.x() - p2.x())**2 + (p1.y() - p2.y())**2)
+
+def distancetopoint(p1, p2):
+    return math.sqrt((p1.x() - p2.x()) ** 2 + (p1.y() - p2.y()) ** 2)
+
 
 def distancetoline(point, line):
     p1, p2 = line
@@ -2681,13 +2730,15 @@ def distancetoline(point, line):
         return np.linalg.norm(p3 - p2)
     return np.linalg.norm(np.cross(p2 - p1, p1 - p3)) / np.linalg.norm(p2 - p1)
 
+
 def generateColorByText(text):
     s = text
     hashCode = int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16)
     r = int((hashCode / 255) % 255)
-    g = int((hashCode / 65025)  % 255)
-    b = int((hashCode / 16581375)  % 255)
+    g = int((hashCode / 65025) % 255)
+    b = int((hashCode / 16581375) % 255)
     return QColor(r, g, b, 100)
+
 
 def read(filename, default=None):
     try:
@@ -2696,18 +2747,20 @@ def read(filename, default=None):
     except:
         return default
 
+
 def readCSS(fname):
+    f = open(fname, 'r')
+    s = f.read()
+    f.close()
+    return s
 
-	f = open(fname, 'r')
-	s = f.read()
-	f.close()
-	return s
 
-#print(Canvas.__mro__)
+# print(Canvas.__mro__)
 if __name__ == '__main__':
     platformName = platform.system()
     app = QApplication(sys.argv)
-    window = MainWindow(platformName = platformName)
-#    window.setStyleSheet(readCSS("MetroDark.qss"))
+    window = MainWindow(osplatform=platformName)
+    # app.setStyleSheet(qdarkstyle.load_stylesheet_from_environment())
+    app.setStyleSheet(readCSS('style.qss'))
     window.show()
     sys.exit(app.exec_())
