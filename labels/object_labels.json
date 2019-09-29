@@ -1,30 +1,33 @@
 {
-	"Object Class":[
-		{
-			"Vehicles":{
-				"Sub Class":{
-					"Commercial‎":["Car", "Bus", "Truck", "Unicycle", "Biclycle", "Tricycle", "Motorbike", "Scooter", "Moped", "Autorickshaw"],
-					"Engineering":["Bulldozers", "Cranes", "Dump truck", "Excavating equipment‎", "JCB", "Military vehicles", "Tractors‎"],
-					"Emergency":["Ambulance", "Fire service vehicle", "Fireboat‎", "Police vehicle‎", "Tow truck‎"]
-				},
-				"Orientation":["Front", "Rear", "Left", "Right", "Front-Left", "Front-Right", "Rear-Left", "Rear-Right"],
-				"Indicators":{"Break":["On", "Off"], "Left":["On", "Off"], "Right":["On", "Off"]}
-			}
+	"class":{
+		"vehicle":{
+			"subclass":["car", "van", "truck", "trailer","bus", "scooter", "bicycle", "motorcycle", "wheelchair", "stroller", "construction_vehicle", "unknown"],
+			"orientation":["front", "read", "left", "right", "front_left", "front_right", "rear_left", "rear_right"],
+			"motion":["moving", "static", "unknown"],
+			"signaling":["none", "left_blinker", "right_blinker", "brake_lights", "reverse_light", "caution_orange_light"]
 		},
-		{
-			"Person":{
-				"Sub Class":{
-					"Pedestrian":{"Age":["Adult", "Child"]},
-					"Other":["Cyclist","Motorbike Rider"]
-				},
-				"Orientation":["Front", "Rear", "Left", "right"],
-				"Belongings":["None","Backpack", "Handbag","Other"]
-			}
+
+		"person":{
+			"subclass":["pedestrian", "cyclist", "passenger"],
+			"orientation":["front", "rear", "left", "right"],
+			"pose":["upright", "sitting", "laying", "squating"],
+			"motion":["entering_leaving_vehicle", "running", "walking", "static", "unknown"]
 		},
-		{
-			"Road":{
-				"Sub Class":{}
-			}
+
+		"animal":{
+			"sunclass":["cat", "dog", "bird", "cow"]
+		},
+
+		"static_object":{
+			"subclass":["building", "street_light"]
+		},
+
+		"vegetation":{
+			"subclass":["tree", "grass", "bush"]
+		},
+
+		"traffic_sign":{
+			"subclass":[""]
 		}
-	]
+	}
 }

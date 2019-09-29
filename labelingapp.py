@@ -2,7 +2,7 @@
 """
 Created on Fri Jun  7 10:16:54 2019
 
-@author: sagarg9
+@author: sagar-g-v
 """
 import os
 import sys
@@ -15,14 +15,14 @@ import natsort
 import hashlib
 import platform
 import functools
-import qdarkstyle
 import numpy as np
 import pandas as pd
 from PIL import Image, ImageQt, ImageEnhance
 from qtpy.QtWidgets import (QMainWindow, QFileDialog, QApplication, QWidget, QLabel, QMenu, QToolButton,
                             QSpinBox, QScrollArea, QSlider, QAction, QGridLayout, QComboBox, QHBoxLayout,
                             QGroupBox, QVBoxLayout, QMessageBox, QColorDialog, QDialogButtonBox, QProgressBar,
-                            QDialog, QToolBar, QStyledItemDelegate, QSpacerItem)
+                            QDialog, QToolBar, QStyledItemDelegate, QDockWidget, QListWidgetItem, QLayout,
+                            QListWidget)
 from qtpy.QtCore import (QBasicTimer, Qt, QCoreApplication, QRectF, QSize, QPointF, QPoint, Signal, QTimer, Slot)
 from qtpy.QtGui import (QIcon, QPixmap, QColor, QPen, QFont, QPainterPath, QFontMetrics, QImage,
                         QPainter, QPalette)
@@ -75,8 +75,9 @@ class Shape(object):
 
     def __init__(self, label=None, line_color=None, shape_type=None):
         self.label = label
-        self.points = []
-        self.controlvalues = []
+        self.shape_id = None
+        self.points = list()
+        self.controlvalues = list()
         self.fill = False
         self.selected = False
         self.shape_type = shape_type
@@ -84,9 +85,9 @@ class Shape(object):
         self.shape_property = {
             "shape_type": self.shape_type,
             "line_color": None,
-            "points": [],
-            "controlvalues": [],
-            "fill_color": None,
+            "points": list(),
+            "control_values": list(),
+            "fill_color": self.fill_color,
             "label": self.label
         }
         self._highlightIndex = None
@@ -105,6 +106,7 @@ class Shape(object):
             self.line_color = line_color
 
         self.shape_type = shape_type
+        self.updateProperty()
 
     @property
     def shape_type(self):
@@ -122,10 +124,10 @@ class Shape(object):
     def updateProperty(self, update=None):
         if update is None:
             update = dict()
-        self.shape_property["points"] = [{"x": point.x(), "y": point.y()} \
-                                         for point in self.points]
-        self.shape_property["controlvalues"] = [{"x": value.x(), "y": value.y()} \
-                                                for value in self.controlvalues]
+        self.shape_property["points"] = [{"x": point.x(), "y": point.y()} for point in self.points]
+        # self.shape_property["controlvalues"] = [{"x": value.x(), "y": value.y()} for value in self.controlvalues]
+        self.fill_color = generateColorByText(str(self.label) + '_' + str(self.shape_id))
+        self.shape_property["fill_color"] = self.fill_color
 
     def close(self):
         self._closed = True
@@ -348,6 +350,7 @@ class Shape(object):
         pass
 
     def getControlPoint(self, i):
+        cpoint = None
         if self.shape_type == 'rectangle':
             value = self.controlvalues[i]
             points = [self.points[0], self.points[1],
@@ -372,7 +375,7 @@ class Shape(object):
             points = self.points
 
         for i, p in enumerate(points):
-            dist = distancetopoint(p, point)
+            dist = distance_bw_points(p, point)
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
                 nearest = i
@@ -402,7 +405,7 @@ class Shape(object):
             else:
                 line = [points[i - 1], points[i]]
 
-            dist = distancetoline(point, line)
+            dist = distance_bw_point_to_line(point, line)
             if dist <= epsilon and dist < min_distance:
                 min_distance = dist
                 nearest = i
@@ -415,7 +418,7 @@ class Shape(object):
         if self.shape_type == 'rectangle':
             for i in range(4):
                 cpoint = self.getControlPoint(i)
-                dist = distancetopoint(cpoint, point)
+                dist = distance_bw_points(cpoint, point)
                 if dist <= epsilon and dist < min_distance:
                     min_distance = dist
                     nearest = i
@@ -523,8 +526,9 @@ class Canvas(QWidget):
         super(Canvas, self).__init__(*args, **kwargs)
         # Initialise local state.
         self.mode = self.EDIT
-        self.shapes = []
-        self.shapesBackups = []
+        self.shapes = list()
+        self.shapesBackups = list()
+        self.idvalues = list()
         self.current = None
         self.selectedShape = None  # save the selected shape here
         self.autoselect = -1
@@ -544,8 +548,8 @@ class Canvas(QWidget):
         # TODO: hiding and locking shapes need to be added
         self.visible = {}
         self.locked = {}
-        self._hideBackround = False
-        self.hideBackround = False
+        self._hideBackground = False
+        self.hideBackground = False
         self.hShape = None
         self.hVertex = None
         self.hEdge = None
@@ -695,7 +699,7 @@ class Canvas(QWidget):
                     self.line.close()
                 elif len(self.current.points) < 4:
                     size = self.current.points[1] - self.current.points[0]
-                    self.line.points = [QPoint(pos.x() - (size.x() / 2), pos.y() - (size.y() / 2)), \
+                    self.line.points = [QPoint(pos.x() - (size.x() / 2), pos.y() - (size.y() / 2)),
                                         QPoint(pos.x() + (size.x() / 2), pos.y() + (size.y() / 2))]
                     self.line.close()
             elif self.createMode == 'circle':
@@ -784,18 +788,18 @@ class Canvas(QWidget):
                 self.update()
                 break
 
+        # elif shape.containsPoint(pos):# highlight when hovering over shape
+        #     if self.selectedVertex():
+        #         self.hShape.highlightClear()
+        #     self.hVertex = None
+        #     self.hShape = shape
+        #     self.hEdge = None
+        #     self.setToolTip(
+        #         "Click & drag to move shape '%s'" % shape.label)
+        #     self.overrideCursor(CURSOR_GRAB)
+        #     self.update()
+        #     break
 
-        #            elif shape.containsPoint(pos):# highlight when hovering over shape
-        #                if self.selectedVertex():
-        #                    self.hShape.highlightClear()
-        #                self.hVertex = None
-        #                self.hShape = shape
-        #                self.hEdge = None
-        #                self.setToolTip(
-        #                    "Click & drag to move shape '%s'" % shape.label)
-        #                self.overrideCursor(CURSOR_GRAB)
-        #                self.update()
-        #                break
         else:  # Nothing found, clear highlights, reset state.
             if self.hShape:
                 self.hShape.highlightClear()
@@ -878,13 +882,12 @@ class Canvas(QWidget):
 
     def mouseReleaseEvent(self, ev):
         if ev.button() == Qt.RightButton:
-            #            menu = self.menus[bool(self.selectedShapeCopy)]
             self.restoreCursor()
-        #            if not menu.exec_(self.mapToGlobal(ev.pos()))\
-        #               and self.selectedShapeCopy:
-        #                # Cancel the move by deleting the shadow docopy.
-        #                self.selectedShapeCopy = None
-        #                self.repaint()
+            # menu = self.menus[bool(self.selectedShapeCopy)]
+            # if not menu.exec_(self.mapToGlobal(ev.pos())) and self.selectedShapeCopy:
+            #     # Cancel the move by deleting the shadow docopy.
+            #     self.selectedShapeCopy = None
+            #     self.repaint()
         elif ev.button() == Qt.LeftButton and self.selectedShape:
             self.overrideCursor(CURSOR_GRAB)
         if self.movingShape:
@@ -908,8 +911,8 @@ class Canvas(QWidget):
         self.storeShapes()
         self.selectedShapeCopy = None
 
-    def hideBackroundShapes(self, value):
-        self.hideBackround = value
+    def hideBackgroundShapes(self, value):
+        self.hideBackground = value
         if self.selectedShape:
             # Only hide other shapes if there is a current selection.
             # Otherwise the user will not be able to select a shape.
@@ -917,7 +920,7 @@ class Canvas(QWidget):
             self.repaint()
 
     def setHiding(self, enable=True):
-        self._hideBackround = self.hideBackround if enable else False
+        self._hideBackground = self.hideBackground if enable else False
 
     def canCloseShape(self):
         return self.drawing() and self.current and len(self.current) > 2
@@ -1069,9 +1072,9 @@ class Canvas(QWidget):
         if self.selectedShape:
             shape = self.selectedShape
             self.shapes.remove(self.selectedShape)
+            self.deSelectShape()
             self.storeShapes()
             self.selectedShape = None
-            self.selectionChanged.emit(False)
             self.update()
             return shape
 
@@ -1111,7 +1114,7 @@ class Canvas(QWidget):
         p.drawPixmap(0, 0, self.pixmap)
         Shape.scale = self.scale
         for shape in self.shapes:
-            if (shape.selected or not self._hideBackround) and \
+            if (shape.selected or not self._hideBackground) and \
                     self.isShapeVisible(shape):
                 shape.fill = shape.selected or shape == self.hShape
                 shape.paint(p)
@@ -1197,9 +1200,15 @@ class Canvas(QWidget):
 
             w, h = self.current.size()
             if not (w < 10 or h < 10):
+                shape_id = max(self.idvalues) + 1 if self.idvalues else 1
+                self.idvalues.append(shape_id)
+                self.current.shape_id = shape_id
                 self.shapes.append(self.current)
                 self.storeShapes()
         else:
+            shape_id = max(self.idvalues) + 1 if self.idvalues else 1
+            self.current.shape_id = shape_id
+            self.idvalues.append(shape_id)
             self.shapes.append(self.current)
             self.storeShapes()
         self.current = None
@@ -1450,7 +1459,7 @@ class Canvas(QWidget):
 
     def loadPixmap(self, pixmap):
         self.pixmap = pixmap
-        self.shapes = []
+        self.shapes.clear()
         self.repaint()
 
     def loadShapes(self, shapes):
@@ -1483,11 +1492,12 @@ class MainWindow(QMainWindow):
     FIT_WINDOW, FIT_WIDTH, MANUAL_ZOOM = list(range(3))
     frameUpdated = Signal(int, int)
 
-    def __init__(self, osplatform, defaultSaveDir=None):
+    def __init__(self, os_platform):
         super(MainWindow, self).__init__()
-        self.platformName = osplatform
+        self.platformName = os_platform
         self.setWindowTitle(app_name)
         self.setWindowIcon(QIcon(appIcon))
+        self.setMinimumSize(QSize(1200, 700))
         self.colorDialog = ColorDialog(parent=self)
 
         self.canvas = Canvas(parent=self)
@@ -1503,7 +1513,7 @@ class MainWindow(QMainWindow):
         self.zoomWidget = ZoomWidget()
         self.zoomWidget.valueChanged.connect(self.paintCanvas)
 
-        # self.labelwidget = LabelWidget()
+        self.labelwidget = LabelWidget()
 
         self.imageditor = ImageEditor(parent=self)
 
@@ -1518,6 +1528,23 @@ class MainWindow(QMainWindow):
         self.scrollBars[Qt.Vertical].valueChanged.connect(self.updateScrollPos)
         self.scrollBars[Qt.Horizontal].valueChanged.connect(self.updateScrollPos)
 
+        self.objectList = QListWidget()
+        self.objectList.setDisabled(True)
+        self.objectList.itemClicked.connect(self.listSelectionChanged)
+
+        self.objectView = QDockWidget("object view", self)
+        dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
+        self.objectView.setFeatures(self.objectView.features() ^ dockFeatures)
+        self.objectView.setWidget(self.objectList)
+
+        self.propertyDock = QDockWidget("Property", self)
+        dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
+        self.propertyDock.setFeatures(self.propertyDock.features() ^ dockFeatures)
+        self.propertyDock.setWidget(self.labelwidget)
+
+        self.addDockWidget(Qt.RightDockWidgetArea, self.objectView)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.propertyDock)
+
         self.zoomMode = self.MANUAL_ZOOM
         self.scalers = {
             self.FIT_WINDOW: self.scaleFitWindow,
@@ -1529,8 +1556,8 @@ class MainWindow(QMainWindow):
         self.image = QImage()
         self.cvimage = None
         self.video = None
-        self.videobuffer = []
-        self.imagefiles = []
+        self.videobuffer = list()
+        self.imagefiles = list()
         self.dirPath = None
         self.frameNum = None
         self.totalframes = None
@@ -1605,10 +1632,10 @@ class MainWindow(QMainWindow):
         play_button = button('&Play', self.Play, 'Space', 'play',
                              'Start playing video', stylesheet="border-radius: 4px;", iconSize=QSize(25, 25))
 
-        previous_button = button('&Previous', self.loadPreviousframe, 'A', 'previous',
+        previous_button = button('&Previous', self.loadPreviousFrame, 'A', 'previous',
                                  'Go to previous frame', stylesheet="border-radius: 4px;", iconSize=QSize(18, 18))
 
-        next_button = button('&Next', self.loadNextframe, 'D', 'next',
+        next_button = button('&Next', self.loadNextFrame, 'D', 'next',
                              'Go to next frame', stylesheet="border-radius: 4px;", iconSize=QSize(18, 18))
 
         full_screen = button('&Go full screen', self.toggleFullscreen, 'Ctrl+Tab', 'full-screen',
@@ -1626,6 +1653,18 @@ class MainWindow(QMainWindow):
 
         zoom_out = button('Zoom Out', lambda: self.addZoom(-1),
                           'Ctrl+-', 'zoom-out', 'Zoom Out', enabled=False)
+
+        bring_forward = button('Bring Forward', self.bringShapeForward,
+                               'Ctrl+Shift+U', 'bring-forward', 'Bring forward', enabled=False)
+
+        send_backward = button('Send Backward', self.sendShapeBackward,
+                               'Ctrl+Shift+D', 'send-backward', 'Send Backward', enabled=False)
+
+        bring_to_front = button('Bring to front', self.bringShapeToFront,
+                                'Ctrl+Shift+T', 'bring-to-front', 'Bring to front', enabled=False)
+
+        send_to_back = button('Send to back', self.sendShapeToBack,
+                              'Ctrl+Shift+T', 'send-to-back', 'Send to back', enabled=False)
 
         frameinfo = QSpinBox()
         frameinfo.setSingleStep(1)
@@ -1692,17 +1731,11 @@ class MainWindow(QMainWindow):
             zoom_to_actual_size
         )
 
-        onLoadActive = (
-            Close,
-            createPolygonMode,
-            createRectangleMode,
-            createCircleMode,
-            createCubeMode,
-            createLineMode,
-            createPointMode,
-            createPolyLineMode,
-            editMode,
-            imagedit
+        layers_menu = (
+            bring_forward,
+            send_backward,
+            bring_to_front,
+            send_to_back
         )
 
         toolbar_menu = (
@@ -1724,33 +1757,63 @@ class MainWindow(QMainWindow):
             self.zoomWidget
         )
 
-        self.actions = struct(
+        onLoadActive = (
+            Close,
+            createPolygonMode,
+            createRectangleMode,
+            createCircleMode,
+            createCubeMode,
+            createLineMode,
+            createPointMode,
+            createPolyLineMode,
+            editMode,
+            imagedit,
+            self.objectList
+        )
+
+        onSelectActive = (
+            shapeLineColor,
+            shapeFillColor,
+            bring_forward,
+            send_backward,
+            bring_to_front,
+            send_to_back,
+            delete
+        )
+
+        self.actions = Struct(
             OpenImagefile=OpenImagefile, Quit=Quit, OpenVideofile=OpenVideofile,
-            Openfolder=Openfolder, Close=Close, about_qt=about_qt, onLoadActive=onLoadActive,
+            Openfolder=Openfolder, Close=Close, about_qt=about_qt,
             toolbar_menu=toolbar_menu
         )
 
-        self.zoom_widgets = struct(
+        self.zoom_widgets = Struct(
             zoom_to_extents=zoom_to_extents, zoom_in=zoom_in, zoom_out=zoom_out,
             zoom_to_actual_size=zoom_to_actual_size, zoom_menu=zoom_menu
         )
 
-        self.controls_widgets = struct(
+        self.controls_widgets = Struct(
             previous_button=previous_button, play_button=play_button, next_button=next_button, fpsbox=fpsbox,
             videoslider=videoslider, controls_menu=controls_menu
         )
 
-        self.other_widgets = struct(
+        self.layer_widgets = Struct(
+            bring_forward=bring_forward, send_backward=send_backward, bring_to_front=bring_to_front,
+            send_to_back=send_to_back, layers_menu=layers_menu
+        )
+
+        self.other_widgets = Struct(
             frameinfo=frameinfo, skipstep=skipstep, progressbar=progressbar, labelCoordinates=labelCoordinates,
             other_menu=other_menu
         )
 
-        self.buttons = struct(
+        self.buttons = Struct(
             createCubeMode=createCubeMode, createPolygonMode=createPolygonMode,
             createCircleMode=createCircleMode, createRectangleMode=createRectangleMode,
             createLineMode=createLineMode, createPointMode=createPointMode, editMode=editMode,
             createPolyLineMode=createPolyLineMode, menu=menu, shapeLineColor=shapeLineColor,
-            shapeFillColor=shapeFillColor, delete=delete, undo=undo, full_screen=full_screen
+            shapeFillColor=shapeFillColor, delete=delete, undo=undo, full_screen=full_screen,
+            onSelectActive=onSelectActive, onLoadActive=onLoadActive
         )
 
         self.controls = QHBoxLayout()
@@ -1788,9 +1851,15 @@ class MainWindow(QMainWindow):
         addWidgets(zoom_options, self.zoom_widgets.zoom_menu)
         zoom_options.setAlignment(Qt.AlignHCenter)
 
+        layer_options = QVBoxLayout()
+        addWidgets(layer_options, self.layer_widgets.layers_menu)
+        layer_options.setAlignment(Qt.AlignHCenter)
+
         drawing_options = QVBoxLayout()
         drawing_options.addStretch(1)
         addWidgets(drawing_options, menu)
+        drawing_options.addStretch(1)
+        drawing_options.addLayout(layer_options)
         drawing_options.addStretch(1)
         drawing_options.addLayout(zoom_options)
         drawing_options.addStretch(1)
@@ -1801,7 +1870,7 @@ class MainWindow(QMainWindow):
 
         self.scrollArea = scroll
         self.vlayout = QVBoxLayout()
-        self.vlayout.setContentsMargins(0, 5, 5, 5)
+        self.vlayout.setContentsMargins(0, 5, 0, 5)
         self.vlayout.addWidget(self.scrollArea)
         self.vlayout.addLayout(self.controls)
 
@@ -1814,13 +1883,7 @@ class MainWindow(QMainWindow):
         window = QWidget()
         window.setLayout(hlayout)
         self.setCentralWidget(window)
-
-        #        self.propertydock = QDockWidget("Property" ,self)
-        #        self.dockFeatures = QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable
-        #        self.propertydock.setFeatures(self.propertydock.features() ^ self.dockFeatures)
-
-        #        self.addDockWidget(Qt.RightDockWidgetArea ,self.propertydock)
-        #        self.propertydock.setWidget(self.labelwidget)
+        self.setContentsMargins(0, 0, 5, 0)
 
         self.zoomWidget.setEnabled(False)
         self.other_widgets.frameinfo.setEnabled(False)
@@ -1828,32 +1891,33 @@ class MainWindow(QMainWindow):
         self.setControlsHidden(True)
         self.showMaximized()
 
-    #        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
+        # self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
 
     def closeFile(self):
         pass
 
     def openFile(self, filetype='video-file'):
+        filedialog = QFileDialog()
         if filetype == 'video-file':
-            filename = QFileDialog.getOpenFileName(QFileDialog(), '%s - Open video file' % app_name, '',
-                                                   'Video Files (*.avi *.mp4)', None, QFileDialog.DontUseNativeDialog)[
-                0]
+            filename = filedialog.getOpenFileName(self, '%s - Open video file' % app_name, '',
+                                                  'Video Files (*.avi *.mp4)', None, QFileDialog.DontUseNativeDialog)[0]
             if os.path.isfile(filename):
                 #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
 
         elif filetype == 'image-file':
-            filename = QFileDialog.getOpenFileName(QFileDialog(), '%s - Open image file' % app_name, '',
-                                                   'Image Files (*.jpg *.jpeg *.jpe *.jp2 *.png *.bmp *.tif *.tiff)',
-                                                   None, QFileDialog.DontUseNativeDialog)[0]
+            filename = filedialog.getOpenFileName(self, '%s - Open image file' % app_name, '',
+                                                  'Image Files (*.jpg *.jpeg *.jpe *.jp2 *.png *.bmp *.tif *.tiff)',
+                                                  None, QFileDialog.DontUseNativeDialog)[0]
             if os.path.isfile(filename):
                 #                self.queueEvent(functools.partial(self.loadFile, os.path.abspath(filename) or ""))
                 self.loadFile(os.path.abspath(filename))
 
         elif filetype == 'image-folder':
-            targetDirPath = str(QFileDialog.getExistingDirectory(
-                QFileDialog(), '%s - Open Folder' % app_name, '',
-                               QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks | QFileDialog.DontUseNativeDialog))
+            targetDirPath = str(filedialog.getExistingDirectory(self, '%s - Open Folder' % app_name, '',
+                                                                QFileDialog.ShowDirsOnly | \
+                                                                QFileDialog.DontResolveSymlinks | \
+                                                                QFileDialog.DontUseNativeDialog))
             if os.path.isdir(targetDirPath):
                 self.loadDirImages(targetDirPath)
 
@@ -1906,6 +1970,14 @@ class MainWindow(QMainWindow):
 
     def loadPreviousFrameShapes(self):
         print("use previous doesnot work")
+
+    def updateObjectListWidget(self):
+        self.objectList.clear()
+        for shape in self.canvas.shapes:
+            item = ShapeItem(shape)
+
+            self.objectList.addItem(item)
+            self.objectList.setItemWidget(item, item.getItemWidget())
 
     def updatePixmap(self, current, total):
         if not current == self.other_widgets.frameinfo.value():
@@ -2067,7 +2139,7 @@ class MainWindow(QMainWindow):
         self.frameUpdated.emit(value, self.totalframes - 1)
         self.loadPixmapToCanvas()
 
-    def loadNextframe(self):
+    def loadNextFrame(self):
         canload = (self.videobuffer or self.imagefiles) and (self.frameNum + 1 < self.totalframes)
         if canload:
             step = self.other_widgets.skipstep.value()
@@ -2079,7 +2151,7 @@ class MainWindow(QMainWindow):
             return True
         return False
 
-    def loadPreviousframe(self):
+    def loadPreviousFrame(self):
         canload = (self.videobuffer or self.imagefiles) and (self.frameNum - 1 >= 0)
         if canload:
             step = self.other_widgets.skipstep.value()
@@ -2090,6 +2162,42 @@ class MainWindow(QMainWindow):
                 self.imageditor.updateSettings()
             return True
         return False
+
+    def bringShapeForward(self):
+        shape = self.canvas.selectedShape
+        if shape and shape in self.canvas.shapes:
+            i = self.canvas.shapes.index(shape)
+        else:
+            return
+        if (i + 1) < len(self.canvas.shapes):
+            self.canvas.shapes[i] = self.canvas.shapes[i + 1]
+            self.canvas.shapes[i + 1] = shape
+            self.canvas.repaint()
+
+    def sendShapeBackward(self):
+        shape = self.canvas.selectedShape
+        if shape and shape in self.canvas.shapes:
+            i = self.canvas.shapes.index(shape)
+        else:
+            return
+        if (i - 1) >= 0:
+            self.canvas.shapes[i] = self.canvas.shapes[i - 1]
+            self.canvas.shapes[i - 1] = shape
+            self.canvas.repaint()
+
+    def bringShapeToFront(self):
+        shape = self.canvas.selectedShape
+        if shape and shape in self.canvas.shapes:
+            self.canvas.shapes.remove(shape)
+            self.canvas.shapes.append(shape)
+            self.canvas.repaint()
+
+    def sendShapeToBack(self):
+        shape = self.canvas.selectedShape
+        if shape and shape in self.canvas.shapes:
+            self.canvas.shapes.remove(shape)
+            self.canvas.shapes.insert(0, shape)
+            self.canvas.repaint()
 
     def togglePlayMode(self, status=True):
         self.controls_widgets.videoslider.setEnabled(not status)
@@ -2197,16 +2305,12 @@ class MainWindow(QMainWindow):
             self.canvas.selectedShape.line_color = color
             self.canvas.update()
 
-    #            self.setDirty()
-
     def chshapeFillColor(self):
         color = self.colorDialog.getColor(
             self.fillColor, 'Choose fill color', default=DEFAULT_FILL_COLOR)
         if color:
             self.canvas.selectedShape.fill_color = color
             self.canvas.update()
-
-    #            self.setDirty()
 
     def setEditMode(self):
         self.toggleDrawMode(True)
@@ -2254,7 +2358,7 @@ class MainWindow(QMainWindow):
             self.play_status = False
             self.togglePlayMode(False)
             if self.imagefiles and len(self.imagefiles) == len(self.videobuffer):
-                self.imagefiles = []
+                self.imagefiles.clear()
         else:
             self.play_status = False
             self.togglePlayMode(False)
@@ -2278,19 +2382,28 @@ class MainWindow(QMainWindow):
         for zoom_widget in [self.zoom_widgets.zoom_in, self.zoom_widgets.zoom_out, self.zoom_widgets.zoom_to_extents,
                             self.zoom_widgets.zoom_to_actual_size]:
             zoom_widget.setEnabled(value)
-        for action in self.actions.onLoadActive:
-            action.setEnabled(value)
+        for button in self.buttons.onLoadActive:
+            button.setEnabled(value)
 
     # React to canvas signals.
     @Slot(bool)
     def shapeSelectionChanged(self, selected=False):
-        self.buttons.delete.setEnabled(selected)
-        self.buttons.shapeLineColor.setEnabled(selected)
-        self.buttons.shapeFillColor.setEnabled(selected)
+        for button in self.buttons.onSelectActive:
+            button.setEnabled(selected)
+        if selected:
+            for i, shape in enumerate(self.canvas.shapes):
+                if shape == self.canvas.selectedShape:
+                    self.objectList.setCurrentRow(i)
+        else:
+            self.objectList.clearSelection()
+
+    def listSelectionChanged(self, item):
+        self.canvas.deSelectShape()
+        self.canvas.selectShape(item.shape)
 
     @Slot()
     def newShape(self):
-        pass
+        self.updateObjectListWidget()
 
     #            print("hhh")
 
@@ -2445,74 +2558,127 @@ class ZoomWidget(QSpinBox):
         return QSize(width, height)
 
 
+class ShapeItem(QListWidgetItem):
+    def __init__(self, shape):
+        super(ShapeItem, self).__init__()
+        self.shape = shape
+        self.shape.updateProperty()
+        self.show = True
+        self.lock = True
+        self.label = self.shape.shape_property["label"]
+        self.fillcolor = self.shape.shape_property["fill_color"]
+        text = str(self.label) + '_' + str(self.shape.shape_id)
+        cbubble = ColorBubble(fillcolor=self.fillcolor, text=text)
+        textWidget = QLabel(self.label if self.label else text)
+
+        self.icons = {
+            'hide': newIcon('hide-grey'),
+            'show': newIcon('show'),
+            'delete': newIcon('delete'),
+            'edit': newIcon('edit'),
+            'lock': newIcon('lock-grey'),
+            'unlock': newIcon('unlock')
+        }
+        edit_button = newButton(text="Edit Button", icon=self.icons['edit'], slot=self.editShapeProperty)
+        hide_button = newButton(text="Hide Button", icon=self.icons['show'], slot=self.hideShape)
+        delete_button = newButton(text="Delete Button", icon=self.icons['delete'], slot=self.deleteShape)
+        lock_button = newButton(text="Lock Button", icon=self.icons['unlock'], slot=self.lockShape)
+
+        self.buttons = Struct(
+            edit_button=edit_button, hide_button=hide_button, delete_button=delete_button, lock_button=lock_button
+        )
+
+        buttonlayout = QHBoxLayout()
+        addWidgets(buttonlayout, [edit_button, hide_button, lock_button, delete_button])
+        buttonlayout.setSizeConstraint(QLayout.SetFixedSize)
+        buttonlayout.setAlignment(Qt.AlignVCenter)
+
+        itemLayout = QHBoxLayout()
+        addWidgets(itemLayout, [cbubble, textWidget])
+        itemLayout.addStretch(1)
+        itemLayout.addLayout(buttonlayout)
+
+        self._widget = QWidget()
+        self._widget.setLayout(itemLayout)
+        self._widget.setStyleSheet('''background-color: transparent;
+                                    margin: 0px;''')
+        self.setSizeHint(self._widget.sizeHint())
+
+    def getItemWidget(self):
+        return self._widget
+
+    def editShapeProperty(self):
+        print("editing shape")
+
+    def deleteShape(self):
+        print("deleting shape")
+
+    def lockShape(self):
+        print("lock shape")
+        if self.lock:
+            self.buttons.lock_button.setIcon(self.icons['lock'])
+        else:
+            self.buttons.lock_button.setIcon(self.icons['unlock'])
+        self.lock = not self.lock
+
+    def hideShape(self):
+        if self.show:
+            self.buttons.hide_button.setIcon(self.icons['hide'])
+        else:
+            self.buttons.hide_button.setIcon(self.icons['show'])
+        self.show = not self.show
+
+
+class ColorBubble(QWidget):
+    default_line_color = DEFAULT_LINE_COLOR
+    default_fill_color = DEFAULT_FILL_COLOR
+
+    def __init__(self, fillcolor=None, text="label_0", size=QSize(18, 18)):
+        super(ColorBubble, self).__init__()
+        self._painter = QPainter()
+        self.setStyleSheet("background-color: transparent;")
+        self.fillColor = fillcolor if fillcolor else generateColorByText(text)
+        self.setFixedSize(size)
+        self.update()
+
+    def paintEvent(self, event):
+        p = self._painter
+        p.begin(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.HighQualityAntialiasing)
+
+        pen = QPen(self.fillColor, 1.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+
+        bubble_path = QPainterPath()
+        w, h = self.width() / 2, self.height() / 2
+        centre = QPoint(w, h)
+        offset = 2
+        bubble_path.addEllipse(centre, w - offset, h - offset)
+        p.drawPath(bubble_path)
+        p.fillPath(bubble_path, self.fillColor)
+        p.end()
+
+
 class LabelWidget(QWidget):
-    labelUpdated = Signal(dict)
+    labelChanged = Signal(dict)
 
     def __init__(self, *args, **kwargs):
-        self.property_type = kwargs.pop('property_type', 'bbox')
         super(LabelWidget, self).__init__(*args, **kwargs)
-        self.objectclass = dict()
-        self.loadLabels()
-        self.temp = []
-        self.Id = None
-        self.initWidget()
-
-    def initWidget(self):
-        self.maingrid = QGridLayout()
-        self.populateGrid(self.maingrid, self.objectclass)
-        self.Layout = QVBoxLayout()
-        self.Layout.addLayout(self.maingrid)
-        self.setLayout(self.Layout)
-
-    #        self.setFixedSize(self.sizeHint())
-
-    def populateGrid(self, gridlayout, sourcedict):
-        for i, items in enumerate(sourcedict.items()):
-            mainclass, values = items
-            subclass = [list(value)[0] for value in values]
-            gridlayout.addWidget(QLabel(mainclass), i, 0)
-            cbox = QComboBox()
-            cbox.currentTextChanged.connect(lambda: self.populatelayerOne(gridlayout, values))
-            cbox.addItems(subclass)
-            gridlayout.addWidget(cbox, i, 1)
-
-    def populatelayerOne(self, gridlayout, sourcedict):
-        sender = self.sender()
-        selectionIndex = sender.currentIndex()
-        selectionText = sender.currentText()
-        count, row, col = gridlayout.count(), gridlayout.rowCount(), gridlayout.columnCount()
-        for i in range(1, row):
-            for j in range(1, col):
-                item = gridlayout.itemAtPosition(i, j)
-                item.widget()
-        for i, items in enumerate(sourcedict[selectionIndex][selectionText].items()):
-            subsel, values = items
-            row = gridlayout.rowCount()
-            print(subsel, list(values))
-            name = QLabel(subsel)
-            gridlayout.addWidget(name, row, 1)
-            cbox = QComboBox()
-            cbox.currentTextChanged.connect(lambda: self.populatelayerTwo(gridlayout, values))
-            cbox.addItems(values)
-            gridlayout.addWidget(cbox, row, 2)
-            self.temp.append(name)
-            self.temp.append(cbox)
-
-    def populatelayerTwo(self, gridlayout, sourcedict):
-        sender = self.sender()
-        selectionIndex = sender.currentIndex()
-        selectionText = sender.currentText()
+        self.property_type = kwargs.pop('property_type', 'bbox')
+        self.object_class = self.loadLabels()
 
     def loadLabels(self):
         if self.property_type == 'bbox':
             with open("labels/object_labels.json") as json_file:
-                self.objectclass = json.load(json_file)
+                classes = json.load(json_file)
+            return classes
 
 
 class ImageEditor(QDialog):
     def __init__(self, parent=None):
         super(ImageEditor, self).__init__(parent)
-        self.setFixedSize(QSize(350, 200))
+        self.setFixedSize(QSize(350, 225))
         self.setWindowTitle("Image Enhancer")
         settingGroup = QGroupBox("Enhance Image Settings")
 
@@ -2525,19 +2691,19 @@ class ImageEditor(QDialog):
         for slider, slot in zip([brightness, contrast, sharpness, color, edge], [self.updateSettings] * 5):
             self.setSliderProperty(slider, slot)
 
-        restorebutton = newButton(self, '&Restore Defaults', self.restore, None,
-                                  None, 'restore', style=Qt.ToolButtonTextBesideIcon)
+        restore_button = newButton(self, '&Restore Defaults', self.restore, None,
+                                   None, 'restore', style=Qt.ToolButtonTextBesideIcon)
 
-        self.settinglayout = QGridLayout()
-        addWidgets(self.settinglayout, [(brightnessLabel, 0, 0), (brightness, 0, 1),
+        self.settingLayout = QGridLayout()
+        addWidgets(self.settingLayout, [(brightnessLabel, 0, 0), (brightness, 0, 1),
                                         (contrastLabel, 1, 0), (contrast, 1, 1),
                                         (sharpnessLabel, 2, 0), (sharpness, 2, 1),
                                         (colorLabel, 3, 0), (color, 3, 1), (edgelabel, 4, 0), (edge, 4, 1)])
-        settingGroup.setLayout(self.settinglayout)
+        settingGroup.setLayout(self.settingLayout)
 
         layout = QVBoxLayout()
-        addWidgets(layout, [settingGroup, restorebutton])
-        self.settings = struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color, edge=edge)
+        addWidgets(layout, [settingGroup, restore_button])
+        self.settings = Struct(brightness=brightness, contrast=contrast, sharpness=sharpness, color=color, edge=edge)
         self.setLayout(layout)
 
     @staticmethod
@@ -2615,23 +2781,34 @@ class ColorDialog(QColorDialog):
             self.setCurrentColor(self.default)
 
 
-class struct(object):
+class Struct(object):
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
     def __getitem__(self, key):
         return self.__dict__[key]
 
+    def __setitem__(self, key, value):
+        self.__dict__.update({key: value})
 
-def newButton(parent, text, slot=None, shortcut=None, icon=None,
+    def __len__(self):
+        return len(self.__dict__.items())
+
+
+def newButton(parent=None, text="default text", slot=None, shortcut=None, icon=None,
               tip=None, checkable=False, enabled=True, stylesheet=None,
               style=None, iconSize=None):
     """Create a new button and assign callbacks, shortcuts, etc."""
-    b = QToolButton(parent)
+    if parent:
+        b = QToolButton(parent)
+    else:
+        b = QToolButton()
     if type(text) is str:
         b.setText(text)
     if icon is not None:
         b.setIcon(newIcon(icon))
+    if type(icon) == QIcon:
+        b.setIcon(icon)
     if shortcut is not None:
         if isinstance(shortcut, (list, tuple)):
             b.setShortcut(shortcut[0])
@@ -2705,9 +2882,15 @@ def addWidgets(layout, widgets):
             layout.addWidget(widget[0], *widget[1:])
         elif isinstance(widget, QWidget):
             layout.addWidget(widget)
+        elif widget is None:
+            layout.addStretch(1)
 
 
-def newIcon(icon):
+def newIcon(icon, mode=None):
+    if mode is not None:
+        tempicon = QIcon()
+        tempicon.addFile(os.path.join(icondir, '%s.png' % icon), mode=mode)
+        return tempicon
     return QIcon(os.path.join(icondir, '%s.png' % icon))
 
 
@@ -2715,11 +2898,11 @@ def distance(p):
     return math.sqrt(p.x() * p.x() + p.y() * p.y())
 
 
-def distancetopoint(p1, p2):
+def distance_bw_points(p1, p2):
     return math.sqrt((p1.x() - p2.x()) ** 2 + (p1.y() - p2.y()) ** 2)
 
 
-def distancetoline(point, line):
+def distance_bw_point_to_line(point, line):
     p1, p2 = line
     p1 = np.array([p1.x(), p1.y()])
     p2 = np.array([p2.x(), p2.y()])
@@ -2759,8 +2942,8 @@ def readCSS(fname):
 if __name__ == '__main__':
     platformName = platform.system()
     app = QApplication(sys.argv)
-    window = MainWindow(osplatform=platformName)
+    window = MainWindow(os_platform=platformName)
     # app.setStyleSheet(qdarkstyle.load_stylesheet_from_environment())
-    app.setStyleSheet(readCSS('style.qss'))
+    app.setStyleSheet(readCSS('style.css'))
     window.show()
     sys.exit(app.exec_())
