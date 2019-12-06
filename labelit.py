@@ -30,7 +30,7 @@ from qtpy import QT_VERSION
 
 QT5 = QT_VERSION[0] == '5'
 
-app_name = 'labelingapp'
+app_name = 'labelit'
 icondir = 'icons'
 appIcon = os.path.join(icondir, 'appicon.png')
 
